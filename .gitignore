@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.DS_Store
+.vscode/
+server/data/*.json
+server/data/*.tmp
+npm-debug.log*
