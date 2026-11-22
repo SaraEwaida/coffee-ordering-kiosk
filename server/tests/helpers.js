@@ -28,8 +28,11 @@ export function makeTestPlatform(options = {}) {
   });
   const originalClose = platform.close;
   platform.close = () => {
+    // Close the databases BEFORE removing the directory: Windows refuses to
+    // unlink a file that still has an open handle. maxRetries covers the brief
+    // window after close() where the handle has not yet been released.
     originalClose();
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   };
   platform.tempDir = dir;
   return platform;

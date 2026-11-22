@@ -4,6 +4,7 @@ import { makeTestPlatform, startHttp, LATTE_LINE } from './helpers.js';
 import { buildPlatform } from '../app.js';
 import { silentLogger } from '../lib/logger.js';
 import { resolve } from 'node:path';
+import { rmSync } from 'node:fs';
 
 let platform;
 let http;
@@ -226,7 +227,12 @@ describe('resilience: restart durability', () => {
     } finally {
       revived.close();
       http = { close: async () => {} };
-      platform = { close: () => {}, tempDir: dir };
+      // revived.close() closes the databases but does not own the temp
+      // directory, so remove it here rather than leaving it behind.
+      platform = {
+        close: () => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }),
+        tempDir: dir,
+      };
     }
   });
 
@@ -254,7 +260,12 @@ describe('resilience: restart durability', () => {
     } finally {
       revived.close();
       http = { close: async () => {} };
-      platform = { close: () => {}, tempDir: dir };
+      // revived.close() closes the databases but does not own the temp
+      // directory, so remove it here rather than leaving it behind.
+      platform = {
+        close: () => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }),
+        tempDir: dir,
+      };
     }
   });
 });

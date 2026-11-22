@@ -16,6 +16,21 @@ configured to agree.
 
 **168 tests, 168 passing, 0 failing** — about 11 seconds.
 
+### Platform note
+
+The suite is verified on **Linux and Windows**. That distinction matters: the
+first Windows run failed 13 tests in `importV3.test.js`, all with `EPERM` on
+directory cleanup, because a SQLite connection was left open. Linux allows
+unlinking an open file and Windows does not, so the same code passed on one and
+failed on the other — and in WAL mode the `-wal` and `-shm` siblings are locked
+too. Test teardown now closes every tracked handle before removing a directory
+and retries the removal, since Windows can take a moment to release a handle
+after `close()`.
+
+Worth knowing when reading a failure: all 13 assertions had **passed**. The
+error was in teardown, after the test body. A green assertion with a red test is
+usually a resource-cleanup problem, not a logic one.
+
 | File | Tests | Covers |
 |---|---|---|
 | `money.test.js` | 22 | Integer discipline, VAT extraction, rounding, parsing, pro-rata |

@@ -12,7 +12,7 @@ import { silentLogger } from '../lib/logger.js';
 /** Build a database shaped like a real Version 3 one, with data in it. */
 function makeLegacyV3Database(dir) {
   const path = resolve(dir, 'coffee-kiosk.sqlite');
-  const db = openDatabase(path);
+  const db = track(openDatabase(path));
   db.exec(`
     CREATE TABLE products (id TEXT PRIMARY KEY, name TEXT, name_ar TEXT, description TEXT,
       description_ar TEXT, category TEXT, price_cents INTEGER, image TEXT, available INTEGER, popular INTEGER);
@@ -66,11 +66,42 @@ function makeLegacyV3Database(dir) {
   return path;
 }
 
+/**
+ * Databases opened by a test, so cleanup can close them before deleting the
+ * directory. Windows refuses to unlink a file that still has an open handle,
+ * so an unclosed connection fails teardown with EPERM — on Linux the same code
+ * passes, because unlinking an open file is allowed there.
+ */
+const openDatabases = [];
+
 function freshPosDb(dir) {
-  const db = openDatabase(resolve(dir, 'demo-pos.sqlite'));
+  const db = track(openDatabase(resolve(dir, 'demo-pos.sqlite')));
   migrate(db, resolve(import.meta.dirname, '../database/migrations/demo-pos'));
   seedDemoPos(db);
   return db;
+}
+
+/**
+ * Close every database this test opened, then remove the directory.
+ *
+ * maxRetries covers the brief window after close() where Windows (or an
+ * antivirus scanner holding the file) has not yet released the handle.
+ */
+/** Register a database so cleanup() will close it even if a test throws. */
+function track(db) {
+  openDatabases.push(db);
+  return db;
+}
+
+function cleanup(dir) {
+  while (openDatabases.length > 0) {
+    try {
+      openDatabases.pop().close();
+    } catch {
+      // Already closed; nothing to do.
+    }
+  }
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
 
 describe('importV3: non-destructive guarantees', () => {
@@ -80,7 +111,7 @@ describe('importV3: non-destructive guarantees', () => {
       const legacyPath = makeLegacyV3Database(dir);
       const before = statSync(legacyPath).mtimeMs;
       const beforeRows = (() => {
-        const db = openDatabase(legacyPath, { readOnly: true });
+        const db = track(openDatabase(legacyPath, { readOnly: true }));
         const n = db.prepare('SELECT COUNT(*) AS n FROM orders').get().n;
         db.close();
         return n;
@@ -89,7 +120,7 @@ describe('importV3: non-destructive guarantees', () => {
       const posDb = freshPosDb(dir);
       importV3Data({ posDb, legacyPath, logger: silentLogger });
 
-      const after = openDatabase(legacyPath, { readOnly: true });
+      const after = track(openDatabase(legacyPath, { readOnly: true }));
       assert.equal(after.prepare('SELECT COUNT(*) AS n FROM orders').get().n, beforeRows);
       // Tables are all still there and untouched.
       const tables = after.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((r) => r.name);
@@ -97,7 +128,7 @@ describe('importV3: non-destructive guarantees', () => {
       after.close();
       assert.equal(statSync(legacyPath).mtimeMs, before, 'the file must not have been modified');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 
@@ -112,7 +143,7 @@ describe('importV3: non-destructive guarantees', () => {
       const backups = readdirSync(resolve(dir, 'backups'));
       assert.ok(backups.length >= 1);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 
@@ -124,7 +155,7 @@ describe('importV3: non-destructive guarantees', () => {
       assert.equal(summary.found, false);
       assert.equal(summary.orders, 0);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 });
@@ -143,7 +174,7 @@ describe('importV3: data fidelity', () => {
       assert.equal(summary.loyaltyAccounts, 1);
       assert.equal(summary.loyaltyTransactions, 2);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 
@@ -162,7 +193,7 @@ describe('importV3: data fidelity', () => {
       assert.equal(order.channel, 'legacy_v3');
       assert.match(order.source_note, /Version 3/);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 
@@ -175,7 +206,7 @@ describe('importV3: data fidelity', () => {
       const item = posDb.prepare("SELECT * FROM pos_order_items WHERE id = 'item-1'").get();
       assert.equal(item.product_id, 'PRD-1003', "'latte' should map to the POS ID");
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 
@@ -190,7 +221,7 @@ describe('importV3: data fidelity', () => {
       assert.equal(item.product_id, 'mystery-drink', 'the original key is retained');
       assert.match(item.notes, /Unmapped legacy product key/);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 
@@ -205,7 +236,7 @@ describe('importV3: data fidelity', () => {
         .all().map((r) => r.modifier_id);
       assert.deepEqual(modifiers, ['MOD-EXT-SHOT', 'MOD-MILK-OAT', 'MOD-SIZE-L', 'MOD-SUG-2', 'MOD-SYR-VAN']);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 
@@ -222,7 +253,7 @@ describe('importV3: data fidelity', () => {
       assert.ok(!modifiers.some((m) => /SHOT/.test(m)), 'extraShot:false must not create a shot modifier');
       assert.ok(modifiers.includes('MOD-SIZE-M'));
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 
@@ -237,7 +268,7 @@ describe('importV3: data fidelity', () => {
       const numbers = posDb.prepare('SELECT order_number FROM pos_orders').all().map((r) => r.order_number);
       assert.ok(numbers.every((n) => n.startsWith('V3-')), 'imported numbers are visibly historical');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 
@@ -250,7 +281,7 @@ describe('importV3: data fidelity', () => {
       const key = posDb.prepare("SELECT client_request_id FROM pos_orders WHERE id = 'ord-1'").get().client_request_id;
       assert.equal(key, 'v3:legacy-request-1', 'imported keys are namespaced');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 });
@@ -272,7 +303,7 @@ describe('importV3: idempotency', () => {
       assert.equal(posDb.prepare('SELECT COUNT(*) AS n FROM pos_orders').get().n, 2);
       assert.equal(posDb.prepare('SELECT COUNT(*) AS n FROM pos_order_items').get().n, 2);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 
@@ -288,7 +319,7 @@ describe('importV3: idempotency', () => {
       assert.ok(event, 'the import must leave an audit trail');
       assert.equal(JSON.parse(event.payload).orders, 2);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 });
