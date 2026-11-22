@@ -1,5 +1,6 @@
 import express from 'express';
 import { resolve, dirname } from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { openDatabase, closeDatabase } from './database/connection.js';
 import { migrate } from './database/migrate.js';
@@ -20,6 +21,46 @@ import { createLogger } from './lib/logger.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_STORE_ID = 'store-demo';
+
+/**
+ * Kiosk content overlays: illustrations, calories and allergens.
+ *
+ * Presentation only. There is deliberately no price or availability here — the
+ * overlay table has no such column, so this cannot override the till.
+ *
+ * The illustrations are original drawings committed to this repository. Real
+ * photographs of the shop's own food would be better and should replace them;
+ * another café's photographs would not be ours to use.
+ */
+const KIOSK_CONTENT = {
+  // --- pastries and snacks ---
+  'PRD-2001': { imageUrl: '/images/food/croissant.svg', calories: 270,
+    allergensEn: 'Wheat, milk, egg', allergensAr: 'قمح، حليب، بيض' },
+  'PRD-2002': { imageUrl: '/images/food/manakish.svg', calories: 310,
+    allergensEn: 'Wheat, sesame', allergensAr: 'قمح، سمسم' },
+  'PRD-2003': { imageUrl: '/images/food/muffin.svg', calories: 390,
+    allergensEn: 'Wheat, milk, egg, soya', allergensAr: 'قمح، حليب، بيض، صويا' },
+  'PRD-2004': { imageUrl: '/images/food/sambousek.svg', calories: 330,
+    allergensEn: 'Wheat, milk', allergensAr: 'قمح، حليب' },
+  'PRD-3001': { imageUrl: '/images/food/date-cookies.svg', calories: 210,
+    allergensEn: 'Wheat, may contain nuts', allergensAr: 'قمح، قد يحتوي على مكسرات' },
+  'PRD-3002': { imageUrl: '/images/food/nuts.svg', calories: 290,
+    allergensEn: 'Tree nuts', allergensAr: 'مكسرات' },
+
+  // --- sugar-free and light ---
+  // Calories matter more here than anywhere else on the menu: a customer
+  // choosing this section is usually choosing it for a reason.
+  'PRD-4001': { imageUrl: '/images/food/avocado-toast.svg', calories: 310,
+    allergensEn: 'Wheat, sesame', allergensAr: 'قمح، سمسم' },
+  'PRD-4002': { imageUrl: '/images/food/yogurt.svg', calories: 220,
+    allergensEn: 'Milk, tree nuts', allergensAr: 'حليب، مكسرات' },
+  'PRD-4003': { imageUrl: '/images/food/energy-balls.svg', calories: 180,
+    allergensEn: 'Tree nuts, oats', allergensAr: 'مكسرات، شوفان' },
+  'PRD-4004': { imageUrl: '/images/food/almond-cake.svg', calories: 240,
+    allergensEn: 'Tree nuts, egg', allergensAr: 'مكسرات، بيض' },
+  'PRD-4005': { imageUrl: '/images/food/lemonade.svg', calories: 35,
+    allergensEn: null, allergensAr: null },
+};
 
 /**
  * Composition root.
@@ -93,10 +134,18 @@ export function buildPlatform({
     kioskStore.upsertMapping(storeId, legacyKey, posProductId);
   }
 
-  // Kiosk-only presentation: the six coffee photos belong to the kiosk
-  // channel, not to the till's catalog.
+  // Kiosk-only presentation: photos, allergens and calories belong to the
+  // kiosk channel, not to the till's catalog. Overlays are re-applied on every
+  // boot (unlike the seed, which only inserts rows that do not exist), so an
+  // existing database picks these up without being rebuilt.
   for (const { legacyKey, posProductId } of legacyProductKeyMap()) {
     kioskStore.upsertOverlay(storeId, posProductId, { imageUrl: `/images/${legacyKey}.webp` });
+  }
+  for (const [posProductId, overlay] of Object.entries(KIOSK_CONTENT)) {
+    kioskStore.upsertOverlay(storeId, posProductId, {
+      ...overlay,
+      imageUrl: preferRealPhoto(overlay.imageUrl),
+    });
   }
 
   const adapter = new DemoPosAdapter({ store, logger });
@@ -197,6 +246,23 @@ export function buildPlatform({
  * how a demo becomes an incident. In development a known password is used and
  * warned about loudly on every boot.
  */
+/**
+ * Use a real photograph when one has been added, otherwise the drawing.
+ *
+ * Drop `croissant.webp` (or .jpg/.png) into `public/images/food/` next to
+ * `croissant.svg` and it is picked up on the next start — no code change, no
+ * configuration. The illustrations are a placeholder for exactly this: the
+ * shop's own photographs of its own food.
+ */
+export function preferRealPhoto(svgUrl, { publicDir = resolve(here, '../public') } = {}) {
+  if (!svgUrl || !svgUrl.endsWith('.svg')) return svgUrl;
+  const base = svgUrl.slice(0, -4);
+  for (const extension of ['.webp', '.jpg', '.jpeg', '.png']) {
+    if (existsSync(resolve(publicDir, `.${base}${extension}`))) return `${base}${extension}`;
+  }
+  return svgUrl;
+}
+
 export function seedPosUsers(store, { logger } = {}) {
   const production = process.env.NODE_ENV === 'production';
   const accounts = [

@@ -14,7 +14,7 @@ configured to agree.
 
 ## Current result
 
-**267 tests, 267 passing, 0 failing** — about 18 seconds.
+**271 tests, 271 passing, 0 failing** — about 18 seconds.
 
 ### Platform note
 
@@ -44,7 +44,7 @@ usually a resource-cleanup problem, not a logic one.
 | `migrations.test.js` | 10 | Ordering, immutability, rollback, pragmas, schema separation |
 | `payments.test.js` | 41 | Every payment outcome, gift-card split, cash, double tap, reload, restart, operator panel, bank stubs, no-card-data |
 | `passwordPrompt.test.js` | 22 | The hidden terminal prompt: the question is shown, nothing echoes, and no key can corrupt a password |
-| `kioskUi.test.js` | 26 | ILS formatting, language fallback, modifier selection rules, the exact payload the screens send |
+| `kioskUi.test.js` | 30 | ILS formatting, language fallback, modifier selection rules, the exact payload the screens send |
 
 ## The tests that matter most
 

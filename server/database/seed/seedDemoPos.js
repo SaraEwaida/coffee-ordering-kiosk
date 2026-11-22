@@ -16,6 +16,9 @@ import { withTransaction } from '../connection.js';
 const CATEGORIES = [
   { id: 'CAT-HOT', nameEn: 'Hot coffee', nameAr: 'قهوة ساخنة', order: 10 },
   { id: 'CAT-ICED', nameEn: 'Iced coffee', nameAr: 'قهوة باردة', order: 20 },
+  // Sits between the drinks and the pastries: a sugar-free range is a
+  // selling point, not an afterthought, so it is not buried at the end.
+  { id: 'CAT-HEALTHY', nameEn: 'Sugar-free & light', nameAr: 'بدون سكر وخفيف', order: 25 },
   { id: 'CAT-PASTRY', nameEn: 'Pastries', nameAr: 'معجنات', order: 30 },
   { id: 'CAT-SNACK', nameEn: 'Snacks', nameAr: 'وجبات خفيفة', order: 40 },
 ];
@@ -60,6 +63,25 @@ const PRODUCTS = [
   { id: 'PRD-3002', sku: 'SNK-NUT-01', category: 'CAT-SNACK', nameEn: 'Mixed Nuts', nameAr: 'مكسرات مشكلة',
     descEn: 'Lightly salted almonds, cashews and pistachios.', descAr: 'لوز وكاجو وفستق بملح خفيف.',
     priceMinor: 1200, image: '', order: 20, legacyKey: null },
+
+  // --- sugar-free and light ---
+  // Nothing here has added sugar. Sweetness comes from dates or fruit, which
+  // is what makes the claim on the category honest rather than marketing.
+  { id: 'PRD-4001', sku: 'SF-AVO-01', category: 'CAT-HEALTHY', nameEn: 'Avocado & Za\u2019atar Toast', nameAr: 'توست أفوكادو وزعتر',
+    descEn: 'Smashed avocado, za\u2019atar and olive oil on sourdough.', descAr: 'أفوكادو مهروس مع الزعتر وزيت الزيتون على خبز العجين المخمر.',
+    priceMinor: 2200, image: '/images/food/avocado-toast.svg', order: 10, legacyKey: null },
+  { id: 'PRD-4002', sku: 'SF-YOG-01', category: 'CAT-HEALTHY', nameEn: 'Greek Yogurt & Walnuts', nameAr: 'لبنة يونانية بالجوز',
+    descEn: 'Thick yogurt with walnuts. No added sugar.', descAr: 'لبن يوناني كثيف مع الجوز. بدون سكر مضاف.',
+    priceMinor: 1600, image: '/images/food/yogurt.svg', order: 20, legacyKey: null },
+  { id: 'PRD-4003', sku: 'SF-BAL-01', category: 'CAT-HEALTHY', nameEn: 'Date & Oat Energy Balls', nameAr: 'كرات التمر والشوفان',
+    descEn: 'Three balls of dates, oats and almonds. Sweetened only by the dates.', descAr: 'ثلاث كرات من التمر والشوفان واللوز. محلاة بالتمر فقط.',
+    priceMinor: 900, image: '/images/food/energy-balls.svg', order: 30, legacyKey: null },
+  { id: 'PRD-4004', sku: 'SF-CAK-01', category: 'CAT-HEALTHY', nameEn: 'Sugar-Free Almond Cake', nameAr: 'كيك اللوز بدون سكر',
+    descEn: 'Ground almond cake, no added sugar.', descAr: 'كيك دقيق اللوز بدون سكر مضاف.',
+    priceMinor: 1400, image: '/images/food/almond-cake.svg', order: 40, legacyKey: null },
+  { id: 'PRD-4005', sku: 'SF-LEM-01', category: 'CAT-HEALTHY', nameEn: 'Fresh Mint Lemonade', nameAr: 'ليموناضة بالنعناع',
+    descEn: 'Pressed lemon and fresh mint. Unsweetened by default.', descAr: 'ليمون معصور ونعناع طازج. بدون تحلية.',
+    priceMinor: 1200, image: '/images/food/lemonade.svg', order: 50, legacyKey: null },
 ];
 
 const GROUPS = [
@@ -86,6 +108,10 @@ const GROUPS = [
     { id: 'MOD-SUG-1', nameEn: '1 spoon', nameAr: 'ملعقة واحدة', delta: 0, order: 20 },
     { id: 'MOD-SUG-2', nameEn: '2 spoons', nameAr: 'ملعقتان', delta: 0, order: 30 },
     { id: 'MOD-SUG-3', nameEn: '3 spoons', nameAr: 'ثلاث ملاعق', delta: 0, order: 40 },
+    // Alternatives to sugar, in the same single-choice group: choosing one of
+    // these IS choosing no sugar, so the two can never be selected together.
+    { id: 'MOD-SUG-STEVIA', nameEn: 'Stevia (sugar-free)', nameAr: 'ستيفيا (بدون سكر)', delta: 0, order: 50 },
+    { id: 'MOD-SUG-DATE', nameEn: 'Date syrup', nameAr: 'دبس التمر', delta: 150, order: 60 },
   ] },
   { id: 'GRP-EXTRA', nameEn: 'Extras', nameAr: 'إضافات', min: 0, max: 3, order: 50, modifiers: [
     { id: 'MOD-EXT-SHOT', nameEn: 'Extra espresso shot', nameAr: 'شوت إسبريسو إضافي', delta: 350, order: 10 },
@@ -112,6 +138,13 @@ const ATTACHMENTS = {
   'PRD-2004': [['GRP-WARM', 0]],
   'PRD-3001': [],
   'PRD-3002': [],
+  // Light food takes the warm option; the lemonade is a drink, so it gets a
+  // size and a sweetener choice but obviously no milk.
+  'PRD-4001': [['GRP-WARM', 0]],
+  'PRD-4002': [],
+  'PRD-4003': [],
+  'PRD-4004': [['GRP-WARM', 0]],
+  'PRD-4005': [['GRP-SIZE', 1], ['GRP-SUGAR', 1]],
 };
 
 const PROMOTIONS = [

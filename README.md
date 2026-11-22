@@ -16,7 +16,7 @@ not a replacement POS. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 ```bash
 npm install
 npm run dev           # vite (5173) + the kiosk platform (4001)
-npm test              # 267 tests
+npm test              # 271 tests
 ```
 
 The kiosk UI talks to the platform API on 4001. The Version 3 Express API is
@@ -83,6 +83,7 @@ Honest status. "Tested" means an automated test or a recorded run proves it.
 | Non-destructive V3 import | Read-only source, timestamped backup, idempotent |
 | Bloom Rewards data | Preserved and imported; the customer-facing flow returns in Phase 2.8 |
 | Kiosk UI on the new API | Shekels, VAT-inclusive, bakery and snacks, real modifier groups, dine-in surcharge, inactivity timeout, full Arabic parity |
+| Sugar-free & light menu | Five items with no added sugar, plus stevia and date-syrup options on every coffee. Calories and allergens shown. |
 | Unattended card-reader simulator | Full state machine: tap/insert prompts, approve, decline, timeout, cancel, and a terminal that stops answering |
 | Gift cards and split payment | Validated and debited atomically; a declined card leg never consumes the balance |
 | Cash at counter | Creates an unpaid order; only authenticated staff can mark cash received |

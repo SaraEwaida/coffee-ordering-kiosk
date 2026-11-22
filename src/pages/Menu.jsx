@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Coffee, Snowflake, LayoutGrid, Croissant, Cookie, WifiOff, Clock } from 'lucide-react';
+import { Coffee, Snowflake, LayoutGrid, Croissant, Cookie, Leaf, WifiOff, Clock } from 'lucide-react';
 import ProductCard from '../components/ProductCard.jsx';
 import TopBar from '../components/TopBar.jsx';
 
@@ -12,6 +12,7 @@ import TopBar from '../components/TopBar.jsx';
 const CATEGORY_ICONS = {
   'CAT-HOT': Coffee,
   'CAT-ICED': Snowflake,
+  'CAT-HEALTHY': Leaf,
   'CAT-PASTRY': Croissant,
   'CAT-SNACK': Cookie,
 };
@@ -31,7 +32,22 @@ export default function Menu({
     })),
   ]), [categories, lang, t.all]);
 
-  const listed = products.filter((p) => active === 'all' || p.categoryId === active);
+  const categoryOrder = useMemo(
+    () => new Map(categories.map((c) => [c.id, c.displayOrder ?? 0])),
+    [categories],
+  );
+
+  // Within "Everything", keep the categories in their own order — drinks,
+  // then the light menu, then food. Without this, products from different
+  // categories interleave by their per-category display order and a croissant
+  // ends up above the espresso.
+  const listed = products
+    .filter((p) => active === 'all' || p.categoryId === active)
+    .sort((a, b) => (
+      (categoryOrder.get(a.categoryId) ?? 0) - (categoryOrder.get(b.categoryId) ?? 0)
+      || a.displayOrder - b.displayOrder
+      || (a.nameEn < b.nameEn ? -1 : 1)
+    ));
 
   return (
     <div className="inner-screen">

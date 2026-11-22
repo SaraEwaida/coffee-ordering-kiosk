@@ -20,7 +20,13 @@ describe('API: kiosk menu', () => {
     assert.equal(status, 200);
     assert.equal(body.available, true);
     assert.equal(body.currency, 'ILS');
-    assert.equal(body.products.length, 12);
+    // Not an exact count: the menu is expected to grow, and a test that
+    // breaks every time the shop adds a pastry is noise.
+    assert.ok(body.products.length >= 12, `expected a full catalog, got ${body.products.length}`);
+    for (const id of ['CAT-HOT', 'CAT-ICED', 'CAT-PASTRY', 'CAT-SNACK', 'CAT-HEALTHY']) {
+      assert.ok(body.categories.some((c) => c.id === id), `missing category ${id}`);
+      assert.ok(body.products.some((p) => p.categoryId === id), `no products in ${id}`);
+    }
     assert.equal(body.sync.stale, false);
     assert.ok(typeof body.sync.ageSeconds === 'number');
     assert.ok(body.menuVersion);

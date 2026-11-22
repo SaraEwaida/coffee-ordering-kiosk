@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { formatMinor, formatDeltaMinor, modifiersText, productName, pickLang } from '../../src/config.js';
 import { defaultSelection, toggleModifier, unmetGroups, unitPriceMinor } from '../../src/lib/modifiers.js';
 import { makeTestPlatform, startHttp } from './helpers.js';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 
 /**
  * Kiosk UI logic that can be tested without a DOM: money formatting, language
@@ -253,5 +256,58 @@ describe('kiosk UI: the payload the UI actually sends', () => {
       assert.equal(quote.status, 201,
         `${product.nameEn} could not be quoted with its default options: ${JSON.stringify(quote.body)}`);
     }
+  });
+});
+
+describe('kiosk content: a real photograph wins over the drawing', () => {
+  test('falls back to the drawing when no photo exists', async () => {
+    const { preferRealPhoto } = await import('../app.js');
+    const dir = mkdtempSync(resolve(tmpdir(), 'photo-test-'));
+    try {
+      assert.equal(
+        preferRealPhoto('/images/food/croissant.svg', { publicDir: dir }),
+        '/images/food/croissant.svg',
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('picks up a .webp dropped in beside it, with no code change', async () => {
+    const { preferRealPhoto } = await import('../app.js');
+    const dir = mkdtempSync(resolve(tmpdir(), 'photo-test-'));
+    try {
+      mkdirSync(resolve(dir, 'images/food'), { recursive: true });
+      writeFileSync(resolve(dir, 'images/food/croissant.webp'), 'not really an image');
+      assert.equal(
+        preferRealPhoto('/images/food/croissant.svg', { publicDir: dir }),
+        '/images/food/croissant.webp',
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('prefers webp over jpg when both are present', async () => {
+    const { preferRealPhoto } = await import('../app.js');
+    const dir = mkdtempSync(resolve(tmpdir(), 'photo-test-'));
+    try {
+      mkdirSync(resolve(dir, 'images/food'), { recursive: true });
+      writeFileSync(resolve(dir, 'images/food/muffin.jpg'), 'x');
+      writeFileSync(resolve(dir, 'images/food/muffin.webp'), 'x');
+      assert.equal(
+        preferRealPhoto('/images/food/muffin.svg', { publicDir: dir }),
+        '/images/food/muffin.webp',
+        'webp keeps the kiosk fast, so it wins',
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('leaves a non-svg url alone', async () => {
+    const { preferRealPhoto } = await import('../app.js');
+    assert.equal(preferRealPhoto('/images/latte.webp'), '/images/latte.webp');
+    assert.equal(preferRealPhoto(null), null);
   });
 });
