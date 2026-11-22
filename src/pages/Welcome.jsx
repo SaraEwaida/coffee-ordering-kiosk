@@ -1,7 +1,7 @@
 import React from 'react';
-import { ArrowRight, ArrowLeft, Coffee, Sparkles } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Coffee, Sparkles, Gift } from 'lucide-react';
 import TopBar from '../components/TopBar.jsx';
-export default function Welcome({t,lang,onLanguage,onStart}) {
+export default function Welcome({t,lang,onLanguage,onStart,onRewards}) {
   const Arrow=lang==='ar'?ArrowLeft:ArrowRight;
   return <div className="welcome-screen">
     <TopBar t={t} lang={lang} onLanguage={onLanguage}/>
@@ -11,7 +11,7 @@ export default function Welcome({t,lang,onLanguage,onStart}) {
         <h1>{t.welcomeTitle}</h1>
         <p>{t.welcomeSubtitle}</p>
         <button className="primary-button hero-button" onClick={onStart}>{t.orderNow}<span className="button-arrow"><Arrow size={26}/></span></button>
-        <div className="mini-note"><span className="note-dot"/>{t.scan}</div>
+        <div className="welcome-rewards-row"><button className="outline-button welcome-rewards-link" onClick={onRewards}><Gift size={18}/>{t.rewards}</button><div className="mini-note"><span className="note-dot"/>{t.scan}</div></div>
       </div>
       <div className="hero-visual" aria-label="Latte coffee photograph">
         <div className="hero-ring ring-one"/><div className="hero-ring ring-two"/>

@@ -1,0 +1,54 @@
+### Requires the "REST Client" VS Code extension for the Send Request buttons.
+### Backend: npm run dev; the API listens on http://localhost:3001
+
+@host = http://localhost:3001
+
+### Health check
+GET {{host}}/api/health
+
+### Menu products
+GET {{host}}/api/products
+
+### Create a NEW Bloom Rewards membership with an unpaid order
+### Save the returned loyaltyCode for the next request.
+POST {{host}}/api/orders
+Content-Type: application/json
+
+{
+  "customerName": "Demo Customer",
+  "fulfillment": "takeaway",
+  "paymentMethod": "counter",
+  "joinRewards": true,
+  "items": [
+    {
+      "productId": "mocha",
+      "quantity": 1,
+      "options": {
+        "size": "medium",
+        "milk": "regular",
+        "syrup": "none",
+        "sugar": 0,
+        "extraShot": false
+      }
+    }
+  ]
+}
+
+### Replace YOUR_CARD_CODE (20 hex characters) after first request
+GET {{host}}/api/loyalty/accounts/YOUR_CARD_CODE
+
+### Staff login (DEMO ONLY)
+POST {{host}}/api/staff/login
+Content-Type: application/json
+
+{
+  "username": "manager",
+  "pin": "123456"
+}
+
+### Add Authorization: Bearer <token> for manager summary request
+GET {{host}}/api/loyalty/overview
+Authorization: Bearer REPLACE_WITH_STAFF_TOKEN
+
+### NOTE: to mark paid, go to Kitchen and verify actual receipt of money.
+### The kiosk does not charge card or send SMS messages.

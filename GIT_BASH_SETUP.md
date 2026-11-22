@@ -1,44 +1,27 @@
-# Push this project to GitHub using VS Code 1.147 + Git Bash
+# Update your existing GitHub repository using Git Bash
 
-Repository: https://github.com/SaraEwaida/coffee-ordering-kiosk.git
+Repository: https://github.com/SaraEwaida/coffee-ordering-kiosk
 
-## 1. Clone your repository
-In VS Code, open Terminal → New Terminal, choose **Git Bash**, then:
+1. **Back up** your old project and any data in `server/data` before overwriting code.
+2. Download `coffee-ordering-kiosk-v2.zip` and extract it. The archive contains a folder named `coffee-ordering-kiosk` with all code, images and documentation.
+3. In Git Bash, open your EXISTING clone:
+   ```bash
+   cd /c/Users/User/Desktop/coffee-ordering-kiosk
+   git status
+   ```
+   If you have edited local code, commit or back it up first.
+4. Copy the extracted v2 files **into that existing cloned folder**. Keep its `.git` directory intact. Never copy an extracted `.git` directory over it.
+5. In Git Bash:
+   ```bash
+   npm install
+   npm run dev
+   ```
+6. Test http://localhost:5173 and the admin/kitchen views. Local demo staff login: `manager` / `123456` for a fresh development DB. Change this PIN using the instructions in README.
+7. Push:
+   ```bash
+   git add .
+   git commit -m "Add SQLite database, audit log, card option and QR receipt"
+   git push origin main
+   ```
 
-```bash
-cd "/c/Users/YOUR_WINDOWS_USERNAME/Documents"
-git clone https://github.com/SaraEwaida/coffee-ordering-kiosk.git
-cd coffee-ordering-kiosk
-```
-
-Replace `YOUR_WINDOWS_USERNAME` with your own Windows username, or use any folder you prefer. If you already cloned it, open that existing folder instead and run `git pull` before copying changes.
-
-## 2. Copy the project files
-Extract the downloaded ZIP and copy its **contents** (`src`, `public`, `shared`, `server`, `package.json`, etc.) into your freshly cloned `coffee-ordering-kiosk` folder.
-
-Do **not** replace or delete the clone's hidden `.git` folder.
-
-## 3. Install and run
-
-```bash
-npm install
-npm run dev
-```
-
-Customer: http://localhost:5173
-Kitchen: http://localhost:5173/?view=kitchen
-Admin: http://localhost:5173/?view=admin
-
-Node.js 22 or newer is required.
-
-## 4. Upload your changes
-Run these commands inside the cloned `coffee-ordering-kiosk` folder:
-
-```bash
-git status
-git add .
-git commit -m "Add complete coffee kiosk pages and photos"
-git push origin main
-```
-
-If Git says there is nothing to commit, your files are already committed. If the branch is not `main`, check `git branch --show-current` and push the appropriate branch.
+If cloning from scratch, `git clone https://github.com/SaraEwaida/coffee-ordering-kiosk.git` first, then copy the downloaded v2 project contents into that clone. The SQLite database and employee PINs are **not** committed to GitHub.

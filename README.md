@@ -1,124 +1,100 @@
-# Coffee Ordering Kiosk ☕
+# Bean & Bloom — Coffee Ordering Kiosk (Version 3)
 
-A **touch-friendly self-service coffee ordering prototype** for a **Windows 10-inch landscape touchscreen**, built with React + Vite + Express. It includes six locally stored AI-generated coffee photos, a customer ordering flow, a barista screen, and a basic admin dashboard.
+A responsive self-service coffee kiosk for **Windows touchscreen devices**. Built with React/Vite, Express and a persistent **SQLite** database. It includes six local coffee images and English/Arabic support.
 
-![Coffee menu example](public/images/latte.webp)
+## Features
 
-## Pages included
+- **NEW Bloom Rewards:** customers join at checkout or enter a private card code, scan a digital loyalty card QR, earn one point per paid dollar, redeem 50 points for $5 off or 100 points for $10 off. Kitchen can cancel an unpaid order and release reserved points; manager sees loyalty metrics.
+- **NEW built-in SQL inspector:** `npm run db:inspect` shows tables and recent records.
+- Beginner guide: [LOYALTY_API_GUIDE.md](./LOYALTY_API_GUIDE.md), including VS Code SQLite viewer, API walkthrough, sample SQL and PowerShell requests.
 
-1. Welcome screen — English / Arabic switcher
-2. Coffee menu — 6 photo products, Hot / Iced categories, availability
-3. Customize — cup size, milk, syrup, sugar, extra shot, quantity, real-time price
-4. Cart — editable quantities, remove, totals
-5. Checkout — takeaway / dine-in, optional name, **pay at counter only**
-6. Confirmation — order number and pickup instructions
-7. Kitchen screen — new → preparing → ready → completed; staff can manually record counter payment
-8. Admin screen — order totals, paid sales, edit menu prices and availability
 
-## Start on Windows (VS Code 1.147)
+- Customer: Welcome → Menu → Customize → Cart → Checkout → Confirmation
+- Payment choice: **Cash at counter** or **Visa/Mastercard on the shop's card terminal**. Both remain unpaid until an employee verifies the actual payment. **The kiosk does not charge cards.**
+- Digital receipt: a QR code on the confirmation screen opens a mobile-friendly receipt link showing the order and its updated payment/preparation status. No paper needed.
+- Employee login (demo). Kitchen: view orders, change preparation status, and record verified payments.
+- Manager login: see summary, edit prices/availability, and see recent activity.
+- SQLite tables: `products`, `orders`, `order_items`, `payments`, `employees`, `events`, `loyalty_accounts`, `loyalty_transactions`. SQL is executed server-side; never from the browser.
+- Existing v1 JSON orders/products are imported automatically when a new SQLite DB is created. Keep backups of the original `server/data/*.json` files.
 
-Install **Node.js 22 or newer** and Git for Windows.
+## Run on Windows / VS Code
 
-Option A: double-click `RUN_ON_WINDOWS.bat`.
+1. Install **Node.js 22.13 or newer** (the built-in `node:sqlite` module is used).
+2. Open the extracted `coffee-ordering-kiosk` folder in VS Code and open **Terminal → New Terminal**.
+3. **PowerShell**:
+   ```powershell
+   cd "C:\Users\User\Desktop\coffee-ordering-kiosk"
+   npm.cmd install
+   npm.cmd run dev
+   ```
+   **Git Bash**:
+   ```bash
+   cd /c/Users/User/Desktop/coffee-ordering-kiosk
+   npm install
+   npm run dev
+   ```
+4. Open:
+   - Customer: http://localhost:5173
+   - Kitchen: http://localhost:5173/?view=kitchen
+   - Admin: http://localhost:5173/?view=admin
+5. **Developer demo credentials only**: `manager` / `123456` (on a fresh database in development). **Change the PIN before any real trial.**
+6. After changes, `Ctrl+C` to stop server. Git Bash:
+   ```bash
+   git add .
+   git commit -m "Add SQLite, digital receipts and card terminal option"
+   git push origin main
+   ```
 
-Option B: open the project folder in VS Code, then **Terminal → New Terminal** (choose Git Bash):
+> The `npm run dev` command launches both Express (port 3001) and Vite (port 5173), using the Vite `/api` proxy. You do **not** need a separate server terminal.
+
+## Change employee PIN
+
+On Windows PowerShell, in the project folder:
+
+```powershell
+$env:STAFF_PIN="654321"  # replace with a private PIN
+npm.cmd run staff:reset-pin
+Remove-Item Env:STAFF_PIN
+```
+
+The manager account lives in SQLite; simply changing an environment variable **after** its creation does not update the PIN. Run the reset script instead. The current demo has no employee account management or password recovery; add them before deployment.
+
+## Phone receipt QR code
+
+1. Open the kiosk confirmation screen after an order.
+2. Scan the QR with the customer's phone; the mobile browser displays a digital receipt.
+3. **Local testing**: the phone and Windows kiosk must be on the same Wi-Fi/LAN. Allow Windows Firewall access to the Vite port **5173** if prompted. The app tries to detect the PC's LAN IP.
+4. If the generated QR link uses the wrong IP, set the environment variable `PUBLIC_RECEIPT_ORIGIN` to `http://YOUR_WINDOWS_LAN_IP:5173` **before launching the dev server**. In PowerShell:
+   ```powershell
+   $env:PUBLIC_RECEIPT_ORIGIN="http://192.168.1.100:5173"  # replace with actual IP
+   npm.cmd run dev
+   ```
+   Run `ipconfig` to find your local IPv4 address.
+5. Production: serve through **HTTPS and a real domain**, configure `PUBLIC_RECEIPT_ORIGIN` accordingly, and add a receipt retention/deletion policy. The QR includes an unguessable access token; treat it as a private link.
+
+**Note:** The QR is a link to an online receipt on the customer's phone, not an SMS, WhatsApp, Apple Wallet pass, or payment receipt from Visa/Mastercard. Sending messages requires a separate SMS/WhatsApp/email provider and customer consent.
+
+## Database and API
+
+- **SQLite file:** `server/data/coffee-kiosk.sqlite` (automatically created); not tracked in Git.
+- **Schema + examples:** see [DATABASE.md](./DATABASE.md).
+- Server recalculates prices from the product table and drink options. Client totals are never trusted.
+- Order creation records a pending payment and `order.created` event.
+- Every employee change records a timestamp and employee ID in `events`.
+- Internal orders/admin APIs require a staff login token; public receipt access requires a long, random token.
+- Existing `products.json` and `orders.json`, if present when the SQLite file is first created, are imported for migration. Do not delete backups before verifying the new data.
+
+## What is NOT implemented yet
+
+**Real online or kiosk card payments:** To charge Visa/Mastercard at the touchscreen, choose a compatible PSP/acquiring bank/EMV-certified terminal, integrate its hosted/terminal SDK and verified webhooks, manage refunds and failed payments, and test transaction reconciliations. Do **not** collect or store card numbers/CVV in this app.
+
+**Production security:** The staff PIN, in-memory sessions and local HTTP server are appropriate only for a controlled demo. Before real customers: use HTTPS, more robust staff identity/permissions, secure device isolation, data protection/retention, backups, input/rate limits, monitoring, EMV/POS payment integration, payment reconciliation and PCI requirements with your provider. Do not expose the local demo server to the public Internet.
+
+## Build to serve from Express
 
 ```bash
-npm install
-npm run dev
+npm run build
+npm run start
 ```
 
-Open in a browser:
-
-- **Customer kiosk**: http://localhost:5173
-- **Kitchen**: http://localhost:5173/?view=kitchen
-- **Admin**: http://localhost:5173/?view=admin
-
-The API is available at `http://localhost:3001/api/health`, and Vite proxies `/api/*` to it.
-
-### Test the flow
-
-Start Order → choose Latte → choose size and milk → Add to cart → Checkout → Pay at counter → Place order. Take note of the order number. Open the Kitchen URL in another browser tab to mark preparing, ready, completed, and payment received. Refresh the Admin URL to see the order statistics.
-
-### Fullscreen kiosk
-
-For development, use Microsoft Edge and press **F11**. For deployment, configure Windows kiosk mode and browser/device management separately. Because the screen's resolution is not yet known, this UI uses responsive layout rules and larger touch targets.
-
-## Project structure
-
-```text
-coffee-ordering-kiosk/
-├── public/images/          Six locally bundled coffee photos (.webp)
-├── shared/catalog.js       Seed menu, customization choices, pricing
-├── shared/i18n.js          English and Arabic strings
-├── src/
-│   ├── components/         Reusable controls
-│   ├── pages/              Eight fully coded screens
-│   ├── api.js              API calls
-│   ├── App.jsx             Navigation and cart state
-│   ├── config.js           Brand/currency formatting
-│   ├── main.jsx            React entry
-│   └── styles.css          Responsive touchscreen styles
-├── server/
-│   ├── index.js            Express REST endpoints
-│   └── data/               Menu and order JSON files (ignored by Git)
-├── index.html
-├── vite.config.js
-├── package.json
-└── RUN_ON_WINDOWS.bat
-```
-
-## Settings
-
-- Shop name: `src/config.js` → `brand`
-- Currency: `src/config.js` → `currency` (sample USD only)
-- Starting coffee products and demo prices: `shared/catalog.js`
-- Generated photos: `public/images/`
-
-The server generates `server/data/products.json` on first run. **After the first run, edit prices in the Admin screen** (changes persist to that JSON file); editing initial prices in `shared/catalog.js` alone will not replace saved prices.
-
-## Backend
-
-Built with Express using file-backed JSON for **prototype use only**. Customer orders are validated and priced by the server, rather than trusting totals calculated by the browser. The API routes include:
-
-```text
-GET   /api/health
-GET   /api/products
-GET   /api/orders
-GET   /api/summary
-POST  /api/orders
-PATCH /api/orders/:id
-PATCH /api/products/:id
-```
-
-Use `npm run build` to build the site and `npm start` to run the API + built site together at `http://localhost:3001`.
-
-## Security / launch checklist
-
-**This is a functional demo, not payment-ready or deployment-ready.** It has no staff authentication, authorization, transaction processing, device/receipt printer integration, tax calculation, inventory, or secure production database. Admin and kitchen routes are publicly accessible to anyone who can reach the server. Do **not** expose this prototype to the public internet or collect sensitive customer/payment information with it. Only staff who have actually received money should mark an order paid. Add these safeguards before real use.
-
-## Push to GitHub with Git Bash
-
-Your repository: https://github.com/SaraEwaida/coffee-ordering-kiosk
-
-**Recommended if the repository already exists**: clone it first, then copy this project’s files into the cloned folder. This preserves any remote README or commit history.
-
-```bash
-# Go to your preferred parent folder; replace this example path:
-cd "/c/Users/YOUR_WINDOWS_USERNAME/Documents"
-git clone https://github.com/SaraEwaida/coffee-ordering-kiosk.git
-cd coffee-ordering-kiosk
-
-# Copy/extract the downloaded project's CONTENTS into this folder (do not copy over .git).
-# Then run:
-git status
-git add .
-git commit -m "Build complete coffee kiosk prototype with product photos"
-git push -u origin main
-```
-
-If your existing remote default branch is not `main`, check `git branch -a` and push the actual branch. If Git asks you to log in, use Git Credential Manager or GitHub authentication; GitHub account passwords are not used for command-line pushes.
-
-## Photos
-
-The six coffee photographs are generated specifically for this project and bundled as local WebP files, so they load even if the kiosk has no internet connection. The UI font may fall back to a system font when offline.
+Open http://localhost:3001 (production-mode pin configuration is required on a **new** database; set `STAFF_PIN` before first run). For a public deployment, use a reverse proxy with HTTPS and explicitly configure a secure public receipt URL.

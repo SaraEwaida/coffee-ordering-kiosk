@@ -1,7 +1,7 @@
 {
   "name": "coffee-ordering-kiosk",
   "private": true,
-  "version": "1.0.0",
+  "version": "3.0.0",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k \"node --watch server/index.js\" \"vite --host 0.0.0.0\"",
@@ -9,13 +9,16 @@
     "dev:api": "node --watch server/index.js",
     "build": "vite build",
     "start": "node server/index.js",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "staff:reset-pin": "node server/reset-pin.js",
+    "db:inspect": "node server/inspect-db.js"
   },
   "dependencies": {
     "express": "^5.1.0",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "qrcode.react": "^4.2.0"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
