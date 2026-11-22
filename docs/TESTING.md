@@ -18,7 +18,8 @@ configured to agree.
 
 ### Platform note
 
-The suite is verified on **Linux and Windows**. That distinction matters: the
+Verified on both: **Linux 168/168 (~10.6 s)** and **Windows 11 / Node 22,
+168/168 (~7.4 s)**. That distinction matters: the
 first Windows run failed 13 tests in `importV3.test.js`, all with `EPERM` on
 directory cleanup, because a SQLite connection was left open. Linux allows
 unlinking an open file and Windows does not, so the same code passed on one and

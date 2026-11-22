@@ -139,8 +139,18 @@ system-generated, but closed with `escapeHtml` in attribute position and
 ### Test results
 
 ```
-npm test  →  168 tests, 168 pass, 0 fail  (~11 s)
+Linux    npm test  →  168 tests, 168 pass, 0 fail  (~10.6 s)
+Windows  npm.cmd test → 168 tests, 168 pass, 0 fail  (~7.4 s)
 ```
+
+The first Windows run failed 13 tests in `importV3.test.js`, all `EPERM` on
+directory cleanup. The cause was a test-only defect: `freshPosDb()` left a
+SQLite connection open, and Windows refuses to unlink a file with a live
+handle, with the WAL `-wal`/`-shm` siblings locked too. Every assertion in
+those 13 tests had passed; only teardown failed. Fixed by tracking and closing
+every handle before removal, with retries for the moment Windows takes to
+release one. The suite had until then only ever been run on Linux, which is
+why a platform-specific defect reached the target machine.
 
 | File | Tests |
 |---|---|
