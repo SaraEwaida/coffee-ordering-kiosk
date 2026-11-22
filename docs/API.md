@@ -234,6 +234,8 @@ All routes except `/health` need `Authorization: Bearer <token>`.
 |---|---|---|
 | `/auth/login` | POST | — (rate limited: 8 per 10 min) |
 | `/auth/logout`, `/auth/me` | POST, GET | any |
+| `/auth/password` | PATCH | any — change your own, current password required |
+| `/users`, `/users/:username/password` | GET, PATCH | **manager** — reset another account |
 | `/menu`, `/products`, `/config` | GET | any |
 | `/orders`, `/orders/:id`, `/kitchen/queue` | GET | any |
 | `/gift-cards/:code` | GET | any (rate limited) |
@@ -256,6 +258,25 @@ All routes except `/health` need `Authorization: Bearer <token>`.
 
 A wrong username and a wrong password return the **same** message, so usernames
 cannot be enumerated. Sessions are stored in SQLite and survive a restart.
+
+### `PATCH /demo-pos/api/auth/password`
+```json
+{ "currentPassword": "…", "newPassword": "…" }
+```
+The current password is required even though the caller is signed in: a token
+left open on an unattended till must not be enough to lock the owner out.
+
+**Every session for that account is destroyed, including the caller's.** The UI
+must sign the user out and ask them to sign in again. Minimum 10 characters,
+not digits-only, and not the same as the current one.
+
+### `PATCH /demo-pos/api/users/:username/password`
+Manager only. Resets another account without knowing its old password, for
+someone who has forgotten theirs. Their sessions end immediately; the manager's
+own session is unaffected.
+
+When nobody can sign in at all, the recovery path is the CLI:
+`npm run pos:password -- manager`.
 
 ### `PATCH /demo-pos/api/products/:id`
 ```json

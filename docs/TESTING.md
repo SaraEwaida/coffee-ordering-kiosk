@@ -14,7 +14,7 @@ configured to agree.
 
 ## Current result
 
-**235 tests, 235 passing, 0 failing** — about 15 seconds.
+**245 tests, 245 passing, 0 failing** — about 19 seconds.
 
 ### Platform note
 
@@ -37,7 +37,7 @@ usually a resource-cleanup problem, not a logic one.
 | `money.test.js` | 22 | Integer discipline, VAT extraction, rounding, parsing, pro-rata |
 | `pricing.test.js` | 27 | Modifier arithmetic, min/max groups, availability, limits, surcharge, promotions, VAT reconciliation |
 | `orders.test.js` | 30 | Idempotency, numbering, price authority, payment safety, kitchen status, snapshots, gift cards, audit |
-| `api.test.js` | 32 | Menu shape, auth, roles, price parsing, full order flow, error model, health, ops protection |
+| `api.test.js` | 42 | Menu shape, auth, roles, price parsing, full order flow, error model, health, ops protection |
 | `sync.test.js` | 20 | Menu versioning, quote invalidation, staleness, **overlays cannot override**, ID mapping |
 | `resilience.test.js` | 14 | POS offline, retry/backoff, stranded payments, restart durability, metrics |
 | `importV3.test.js` | 13 | Read-only guarantee, backups, fidelity, idempotency |

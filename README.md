@@ -16,7 +16,7 @@ not a replacement POS. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 ```bash
 npm install
 npm run dev           # vite (5173) + the kiosk platform (4001)
-npm test              # 235 tests
+npm test              # 245 tests
 ```
 
 The kiosk UI talks to the platform API on 4001. The Version 3 Express API is
@@ -45,6 +45,19 @@ $env:STAFF_PIN = "654321"          # Version 3 app only
 ```
 
 See [`.env.example`](.env.example).
+
+**These apply only when the accounts are first created.** To change a password
+afterwards, use one of:
+
+| Situation | How |
+|---|---|
+| You know your password | Staff console → **My account** → Change my password |
+| A barista forgot theirs | Sign in as manager → **My account** → Reset someone else's password |
+| **Nobody can sign in** | `npm.cmd run pos:password -- manager` and type a new one |
+
+Changing a password signs out every session for that account immediately — if
+a password is being changed because it may have leaked, leaving old sessions
+alive would defeat the point. Minimum 10 characters, and not only digits.
 
 ---
 

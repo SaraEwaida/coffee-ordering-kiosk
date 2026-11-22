@@ -121,6 +121,7 @@
       <button data-tab="catalog" role="tab">Menu &amp; prices</button>
       <button data-tab="audit" role="tab">Audit log</button>
       <button data-tab="payments" role="tab">Payments</button>
+      <button data-tab="account" role="tab">My account</button>
       <button data-tab="demo" role="tab">Demo controls</button>
     </div>
     <div id="globalError" class="notice err hidden"></div>
@@ -156,6 +157,49 @@
         <thead><tr><th>When</th><th>Actor</th><th>Event</th><th>Entity</th><th>Detail</th></tr></thead>
         <tbody id="auditRows"></tbody>
       </table>
+    </section>
+
+    <!-- account -->
+    <section id="tab-account" class="card hidden">
+      <h2>Change my password</h2>
+      <p class="muted">
+        Changing your password signs out every session, including this one.
+        You will need to sign in again.
+      </p>
+      <form id="passwordForm" style="max-width:420px">
+        <div style="margin-bottom:12px">
+          <label for="currentPassword">Current password</label>
+          <input id="currentPassword" type="password" autocomplete="current-password" required>
+        </div>
+        <div style="margin-bottom:12px">
+          <label for="newPassword">New password</label>
+          <input id="newPassword" type="password" autocomplete="new-password" minlength="10" required>
+        </div>
+        <div style="margin-bottom:16px">
+          <label for="confirmPassword">Type the new password again</label>
+          <input id="confirmPassword" type="password" autocomplete="new-password" minlength="10" required>
+        </div>
+        <p class="muted" style="font-size:12px;margin-bottom:14px">
+          At least 10 characters, and not only digits.
+        </p>
+        <button type="submit">Change password</button>
+      </form>
+
+      <div id="resetSection" class="hidden" style="margin-top:34px;border-top:1px solid var(--line);padding-top:24px">
+        <h2>Reset someone else's password</h2>
+        <p class="muted">For a member of staff who has forgotten theirs. Their sessions end immediately.</p>
+        <form id="resetForm" style="max-width:420px">
+          <div style="margin-bottom:12px">
+            <label for="resetUser">Account</label>
+            <select id="resetUser"></select>
+          </div>
+          <div style="margin-bottom:16px">
+            <label for="resetPassword">New password</label>
+            <input id="resetPassword" type="password" autocomplete="new-password" minlength="10" required>
+          </div>
+          <button type="submit" class="ghost">Reset password</button>
+        </form>
+      </div>
     </section>
 
     <!-- payments -->
@@ -346,13 +390,14 @@ function selectTab(name) {
   for (const button of document.querySelectorAll('.tabs button')) {
     button.setAttribute('aria-selected', String(button.dataset.tab === name));
   }
-  for (const tab of ['kitchen', 'catalog', 'audit', 'payments', 'demo']) {
+  for (const tab of ['kitchen', 'catalog', 'audit', 'account', 'payments', 'demo']) {
     $('tab-' + tab).classList.toggle('hidden', tab !== name);
   }
   if (name === 'kitchen') loadKitchen();
   if (name === 'catalog') loadCatalog();
   if (name === 'audit') loadAudit();
   if (name === 'payments') loadPayments();
+  if (name === 'account') loadAccount();
   if (name === 'demo') loadFaults();
 }
 
@@ -500,6 +545,50 @@ function summarise(payload) {
   if (payload.totalMinor !== undefined) parts.push(money(payload.totalMinor));
   return parts.join(' · ') || Object.keys(payload).slice(0, 3).join(', ');
 }
+
+/* ---------------------------------------------------------------- account */
+async function loadAccount() {
+  // Resetting someone else's password is a manager action.
+  $('resetSection').classList.toggle('hidden', user.role !== 'manager');
+  if (user.role !== 'manager') return;
+  try {
+    const { users } = await call('GET', '/users');
+    $('resetUser').innerHTML = users
+      .map((u) => `<option value="${escapeHtml(u.username)}">${escapeHtml(u.username)} (${escapeHtml(u.role)})</option>`)
+      .join('');
+  } catch (error) { showError(error.message); }
+}
+
+$('passwordForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const next = $('newPassword').value;
+  if (next !== $('confirmPassword').value) {
+    showError('The two new passwords do not match.');
+    return;
+  }
+  try {
+    const result = await call('PATCH', '/auth/password', {
+      currentPassword: $('currentPassword').value,
+      newPassword: next,
+    });
+    // The server ended this session too, so sign out cleanly rather than
+    // leaving the page holding a token that no longer works.
+    alert(result.message);
+    signOut('Your password was changed. Please sign in again.');
+  } catch (error) { showError(error.message); }
+});
+
+$('resetForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const username = $('resetUser').value;
+  try {
+    const result = await call('PATCH', `/users/${encodeURIComponent(username)}/password`, {
+      newPassword: $('resetPassword').value,
+    });
+    $('resetPassword').value = '';
+    showOk(result.message);
+  } catch (error) { showError(error.message); }
+});
 
 /* --------------------------------------------------------------- payments */
 async function loadPayments() {

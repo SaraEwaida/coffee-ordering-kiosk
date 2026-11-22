@@ -351,3 +351,125 @@ describe('API: health counts are numbers, not nulls', () => {
     }
   });
 });
+
+describe('API: changing a password', () => {
+  test('requires the current password, even when already signed in', async () => {
+    // A token left open on an unattended till must not be enough to lock the
+    // real owner out.
+    const token = await http.managerToken();
+    const response = await http.patch('/demo-pos/api/auth/password', {
+      currentPassword: 'not-the-right-one',
+      newPassword: 'a-perfectly-fine-password',
+    }, { token });
+    assert.equal(response.status, 401);
+  });
+
+  test('enforces a minimum length and refuses digits-only', async () => {
+    const token = await http.managerToken();
+    for (const bad of ['short', '1234567890123', '']) {
+      const response = await http.patch('/demo-pos/api/auth/password', {
+        currentPassword: 'demo-manager-1234', newPassword: bad,
+      }, { token });
+      assert.ok(response.status >= 400, `"${bad}" should be refused`);
+    }
+  });
+
+  test('refuses reusing the same password', async () => {
+    const token = await http.managerToken();
+    const response = await http.patch('/demo-pos/api/auth/password', {
+      currentPassword: 'demo-manager-1234', newPassword: 'demo-manager-1234',
+    }, { token });
+    assert.equal(response.status, 422);
+  });
+
+  test('changing it ends every session, including the current one', async () => {
+    const tokenA = await http.managerToken();
+    const tokenB = await http.managerToken(); // a second device
+    assert.equal((await http.get('/demo-pos/api/auth/me', { token: tokenB })).status, 200);
+
+    const changed = await http.patch('/demo-pos/api/auth/password', {
+      currentPassword: 'demo-manager-1234', newPassword: 'a-brand-new-password',
+    }, { token: tokenA });
+    assert.equal(changed.status, 200);
+
+    // Whoever had the old password keeps nothing.
+    assert.equal((await http.get('/demo-pos/api/auth/me', { token: tokenA })).status, 401);
+    assert.equal((await http.get('/demo-pos/api/auth/me', { token: tokenB })).status, 401);
+  });
+
+  test('the old password stops working and the new one starts', async () => {
+    const token = await http.managerToken();
+    await http.patch('/demo-pos/api/auth/password', {
+      currentPassword: 'demo-manager-1234', newPassword: 'a-brand-new-password',
+    }, { token });
+
+    const oldLogin = await http.post('/demo-pos/api/auth/login', {
+      username: 'manager', password: 'demo-manager-1234',
+    });
+    assert.equal(oldLogin.status, 401);
+
+    const newLogin = await http.post('/demo-pos/api/auth/login', {
+      username: 'manager', password: 'a-brand-new-password',
+    });
+    assert.equal(newLogin.status, 200);
+  });
+
+  test('a barista cannot reset a manager', async () => {
+    const barista = await http.baristaToken();
+    assert.equal((await http.patch('/demo-pos/api/users/manager/password',
+      { newPassword: 'sneaky-new-password' }, { token: barista })).status, 403);
+  });
+
+  test('a manager can reset a barista, which ends the barista sessions', async () => {
+    const manager = await http.managerToken();
+    const barista = await http.baristaToken();
+    assert.equal((await http.get('/demo-pos/api/auth/me', { token: barista })).status, 200);
+
+    assert.equal((await http.patch('/demo-pos/api/users/barista/password',
+      { newPassword: 'barista-new-password' }, { token: manager })).status, 200);
+
+    // The point of a reset is that the old holder loses access immediately.
+    assert.equal((await http.get('/demo-pos/api/auth/me', { token: barista })).status, 401);
+    // The manager's own session is unaffected.
+    assert.equal((await http.get('/demo-pos/api/auth/me', { token: manager })).status, 200);
+
+    const relogin = await http.post('/demo-pos/api/auth/login', {
+      username: 'barista', password: 'barista-new-password',
+    });
+    assert.equal(relogin.status, 200);
+  });
+
+  test('resetting an unknown user is a 404, not a silent success', async () => {
+    const token = await http.managerToken();
+    const response = await http.patch('/demo-pos/api/users/ghost/password',
+      { newPassword: 'some-new-password' }, { token });
+    assert.equal(response.status, 404);
+  });
+
+  test('password changes are audited without recording the password', async () => {
+    const token = await http.managerToken();
+    await http.patch('/demo-pos/api/auth/password', {
+      currentPassword: 'demo-manager-1234', newPassword: 'a-brand-new-password',
+    }, { token });
+
+    const fresh = await http.post('/demo-pos/api/auth/login', {
+      username: 'manager', password: 'a-brand-new-password',
+    });
+    const audit = await http.get('/demo-pos/api/audit?limit=20', { token: fresh.body.accessToken });
+    const event = audit.body.events.find((e) => e.eventType === 'user.password_changed');
+    assert.ok(event, 'the change must be audited');
+    const serialised = JSON.stringify(event);
+    assert.ok(!serialised.includes('a-brand-new-password'), 'a password must never be logged');
+    assert.ok(!serialised.includes('demo-manager-1234'));
+  });
+
+  test('no password hash is ever returned by an endpoint', async () => {
+    const token = await http.managerToken();
+    for (const path of ['/demo-pos/api/auth/me', '/demo-pos/api/users', '/demo-pos/api/audit']) {
+      const response = await http.get(path, { token });
+      const body = JSON.stringify(response.body);
+      assert.ok(!body.includes('password_hash'), `${path} leaked a hash`);
+      assert.ok(!body.includes('password_salt'), `${path} leaked a salt`);
+    }
+  });
+});

@@ -767,6 +767,54 @@ export class DemoPosStore {
     return { id, username, role };
   }
 
+  /**
+   * Change a user's password.
+   *
+   * Every session for that user is destroyed in the same transaction. If a
+   * password is being changed because it may have leaked, leaving old sessions
+   * alive would defeat the point — whoever had the old password keeps their
+   * access until the token expires.
+   */
+  setPassword(userId, newPassword, actor) {
+    if (typeof newPassword !== 'string' || newPassword.length < 10) {
+      throw new PosRejectedError('A password must be at least 10 characters.', {
+        code: 'password_too_short',
+      });
+    }
+    if (/^\d+$/.test(newPassword)) {
+      throw new PosRejectedError('A password cannot be only digits.', {
+        code: 'password_too_weak',
+      });
+    }
+    return withTransaction(this.db, () => {
+      const user = this.db.prepare('SELECT * FROM pos_users WHERE id = ?').get(userId);
+      if (!user) throw new PosRejectedError('User not found.', { code: 'user_not_found' });
+
+      const { hash, salt } = hashPassword(newPassword);
+      this.db
+        .prepare('UPDATE pos_users SET password_hash = ?, password_salt = ?, must_change = 0 WHERE id = ?')
+        .run(hash, salt, userId);
+
+      const removed = this.db.prepare('DELETE FROM pos_sessions WHERE user_id = ?').run(userId);
+      this.audit(actor, 'user.password_changed', 'user', userId, {
+        username: user.username,
+        sessionsEnded: removed.changes ?? 0,
+      });
+      return { id: user.id, username: user.username, role: user.role, sessionsEnded: removed.changes ?? 0 };
+    });
+  }
+
+  findUserByUsername(username) {
+    const row = this.db
+      .prepare('SELECT id, username, role FROM pos_users WHERE username = ?')
+      .get(String(username ?? '').trim());
+    return row ?? null;
+  }
+
+  listUsers() {
+    return this.db.prepare('SELECT id, username, role, created_at AS createdAt FROM pos_users ORDER BY username').all();
+  }
+
   authenticate(username, password) {
     const user = this.db.prepare('SELECT * FROM pos_users WHERE username = ?').get(String(username ?? '').trim());
     // Always run a verification so a missing username and a wrong password cost

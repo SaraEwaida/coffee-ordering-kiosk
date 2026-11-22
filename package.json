@@ -16,7 +16,8 @@
     "db:migrate": "node scripts/migrate.js",
     "staff:reset-pin": "node server/reset-pin.js",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "pos:password": "node scripts/set-pos-password.js"
   },
   "dependencies": {
     "express": "^5.1.0",

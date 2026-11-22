@@ -104,6 +104,62 @@ export function demoPosRoutes({ store, adapter, paymentAdapter, logger }) {
 
   router.get('/auth/me', auth, (req, res) => res.json({ user: req.posUser }));
 
+  /**
+   * Change your own password.
+   *
+   * The current password is required even though the caller is already signed
+   * in: a token left open on an unattended till must not be enough to lock the
+   * real owner out. Rate limited, because this endpoint also reveals whether a
+   * guessed current password is right.
+   */
+  router.patch(
+    '/auth/password',
+    auth,
+    rateLimit({ windowSeconds: 600, max: 10, message: 'Too many password attempts. Please wait.' }),
+    (req, res) => {
+      const { currentPassword, newPassword } = req.body ?? {};
+      if (!store.authenticate(req.posUser.username, currentPassword)) {
+        logger?.warn?.('demopos.password_change_failed', { username: req.posUser.username });
+        throw unauthorized('Your current password is not correct.');
+      }
+      if (currentPassword === newPassword) {
+        throw validationFailed('The new password must be different.', { field: 'newPassword' });
+      }
+      const result = guard(() => store.setPassword(req.posUser.id, newPassword, actorOf(req)));
+      // Every session is gone, including this one. The user signs in again.
+      res.json({
+        ok: true,
+        username: result.username,
+        sessionsEnded: result.sessionsEnded,
+        message: 'Password changed. All sessions have been signed out, including this one.',
+      });
+    },
+  );
+
+  /**
+   * Reset another user's password. Manager only.
+   *
+   * For the case where a barista has forgotten theirs. The manager does not
+   * need to know the old password, which is why this is role-gated and
+   * separately audited.
+   */
+  router.patch('/users/:username/password', auth, requireRole('manager'), (req, res) => {
+    const target = store.findUserByUsername(req.params.username);
+    if (!target) throw notFound('No such user.');
+    const { newPassword } = req.body ?? {};
+    const result = guard(() => store.setPassword(target.id, newPassword, actorOf(req)));
+    res.json({
+      ok: true,
+      username: result.username,
+      sessionsEnded: result.sessionsEnded,
+      message: `Password reset for ${result.username}. Their sessions have been signed out.`,
+    });
+  });
+
+  router.get('/users', auth, requireRole('manager'), (_req, res) => {
+    res.json({ users: store.listUsers() });
+  });
+
   // ----------------------------------------------------------------- catalog
   router.get('/menu', auth, (_req, res) => res.json(store.getMenu()));
 
