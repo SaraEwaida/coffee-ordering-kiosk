@@ -24,3 +24,6 @@ server/data/*.tmp
 
 # Automatic pre-import backups of the Version 3 database.
 server/data/backups/
+
+# Temporary image-fetch script (contains short-lived asset tokens)
+scripts/fetch-food-photos.ps1
