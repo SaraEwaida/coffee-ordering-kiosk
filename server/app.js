@@ -10,6 +10,8 @@ import { DemoPosAdapter } from './adapters/pos/DemoPosAdapter.js';
 import { KioskStore } from './services/kioskStore.js';
 import { MenuSyncService } from './services/menuSync.js';
 import { CheckoutService } from './services/checkout.js';
+import { PaymentService } from './services/payments.js';
+import { SimulatorPaymentAdapter } from './adapters/payments/SimulatorPaymentAdapter.js';
 import { kioskRoutes } from './routes/kiosk.js';
 import { demoPosRoutes } from './routes/demoPos.js';
 import { requestId, noStore, errorHandler, notFoundHandler } from './middleware/errors.js';
@@ -101,6 +103,13 @@ export function buildPlatform({
   const menuSync = new MenuSyncService({ adapter, kioskStore, storeId, logger, intervalSeconds: syncIntervalSeconds });
   const checkout = new CheckoutService({ adapter, kioskStore, menuSync, storeId, logger });
 
+  // The payment simulator stands in for a certified unattended terminal.
+  // Real bank adapters are stubs until we have SDKs and hardware.
+  const paymentAdapter = new SimulatorPaymentAdapter({ db: kioskDb, logger });
+  const payments = new PaymentService({
+    paymentAdapter, posAdapter: adapter, kioskStore, checkout, storeId, logger,
+  });
+
   // ---- express -----------------------------------------------------------
   const app = express();
   app.disable('x-powered-by');
@@ -111,8 +120,8 @@ export function buildPlatform({
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'kiosk-platform', storeId }));
 
-  app.use('/api/kiosk', kioskRoutes({ menuSync, checkout, kioskStore, storeId, logger }));
-  app.use('/demo-pos/api', demoPosRoutes({ store, adapter, logger }));
+  app.use('/api/kiosk', kioskRoutes({ menuSync, checkout, payments, kioskStore, storeId, logger }));
+  app.use('/demo-pos/api', demoPosRoutes({ store, adapter, paymentAdapter, logger }));
 
   // Demo POS staff console. Served from its own path, as a plain static page
   // separate from the kiosk's React bundle: the till is a different
@@ -126,6 +135,16 @@ export function buildPlatform({
   // data an attacker would want and a customer should never see on a kiosk.
   app.get('/api/ops/exceptions', posAuth(store), requireRole('manager'), (_req, res) => {
     res.json({
+      // Payments that stopped answering, or were approved with no order.
+      paymentsNeedingAttention: payments.listNeedingAttention().map((p) => ({
+        paymentId: p.paymentId,
+        state: p.state,
+        amountMinor: p.amountMinor,
+        currency: p.currency,
+        reference: p.reference,
+        orderSubmitted: p.orderSubmitted,
+        createdAt: p.createdAt,
+      })),
       opsExceptions: kioskStore.listOpsExceptions().map((s) => ({
         submissionId: s.id,
         clientRequestId: s.clientRequestId,
@@ -154,8 +173,10 @@ export function buildPlatform({
     store,
     kioskStore,
     adapter,
+    paymentAdapter,
     menuSync,
     checkout,
+    payments,
     storeId,
     logger,
     importSummary,

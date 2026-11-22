@@ -147,6 +147,11 @@ export class DemoPosAdapter extends PosAdapter {
       this.store.attachPayment(posOrderId, payment, { type: 'kiosk', id: payment?.kioskId ?? null }));
   }
 
+  async redeemGiftCard({ code, amountMinor, orderId = null }) {
+    return this.#call('redeemGiftCard', () =>
+      this.store.redeemGiftCard({ code, amountMinor, orderId }, { type: 'kiosk', id: null }));
+  }
+
   async getOrderStatus(posOrderId) {
     return this.#call('getOrderStatus', () => {
       const order = this.store.getOrder(posOrderId);

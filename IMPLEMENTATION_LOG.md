@@ -296,3 +296,97 @@ Barista queue:
 | **Responsive layouts are unverified.** | CSS for 10" landscape, 10" portrait and 27" portrait exists; nothing proves it does not overflow. |
 | **No upselling, promo entry, table numbers or rewards UI.** | Phase 2 items 6, 7, 8 and 11, all still open. |
 | **Food items have no photographs.** | A monogram placeholder is shown. Real photos would need to be supplied. |
+
+
+---
+
+## 2026-11-22 — Phase 3: payment simulator, gift cards, recovery
+
+### Why a state machine and not a flag
+
+The brief is explicit that "Visa at counter" as a radio button demonstrates
+nothing. A real unattended terminal makes the customer wait, can decline, can
+time out, and can stop answering halfway. A client will not trust a kiosk with
+their money until they have watched each of those paths behave.
+
+The state that justifies the whole design is `unknown`: the terminal stopped
+answering after the card was presented but before the outcome was known.
+Treating it as a decline risks serving an unpaid order; treating it as an
+approval gives coffee away. It is its own state, never auto-resolved, and it
+reaches a human.
+
+### Files added
+
+| Area | Files |
+|---|---|
+| Contract | `server/adapters/payments/PaymentAdapter.js` |
+| Simulator | `server/adapters/payments/SimulatorPaymentAdapter.js` |
+| Bank stubs | `server/adapters/payments/BankTerminalStubs.js` |
+| Orchestration | `server/services/payments.js` |
+| Schema | `server/database/migrations/kiosk/002_payments.sql` |
+| UI | `src/pages/Payment.jsx` |
+| Staff console | Payments tab in `server/demo-pos/public/index.html` |
+| Tests | `server/tests/payments.test.js` (41 tests) |
+
+### Decisions worth recording
+
+**Progress is time-driven and stored, not held in a timer.** The state advances
+when its due time passes, checked on read. There is no in-memory timer to lose,
+so a payment survives a browser reload, a kiosk restart and a power cut.
+
+**The amount is never in the payment request.** The client names a quote; the
+server reads its total. A test posts `amountMinor: 1` and asserts it is ignored.
+
+**A gift card is debited at settlement, not at start.** A customer who walks
+away at the card prompt is never out of pocket, and a declined card leg leaves
+the balance untouched — both tested.
+
+**Cancellation is refused once processing begins**, because the acquirer may
+already hold the authorisation.
+
+**The bank adapters throw.** A stub that quietly returned `approved` would be
+the most dangerous code in the repository: it would make an unpaid order look
+paid. They raise an error carrying a ten-point `blockedOn` list — SDK,
+unattended certification, test hardware, PCI scope, timeout semantics,
+reconciliation — which is also the question list for the banks.
+
+### Defects found by running it
+
+**1. A single poll only advanced one step.** If the kiosk polled slowly, or the
+browser was backgrounded, the payment lagged behind reality. Fixed with a
+bounded catch-up loop.
+
+**2. The catch-up could not actually catch up.** Each step rebased its next due
+time on `now`, so it always landed in the future and the machine crawled
+forward one step per request. Now each step advances from the time it was
+*due*, so one poll after a long gap lands where elapsed time says it should.
+
+**3. A fully-covered gift card reported `waiting_for_card`** though there was no
+terminal leg. Gift-card payments now start `approved` with their own prompt.
+
+**4. `PaymentRejectedError` was not translated in the Demo POS routes**, so a
+refusal like "that payment has already finished" surfaced as a 500 "something
+went wrong" — which tells an operator nothing and looks like a crash.
+
+### Test results
+
+```
+235 tests, 235 passing, 0 failing  (~15 s)
+```
+
+41 new, covering: every outcome; that a decline, timeout or failure creates no
+order; that `unknown` creates no order and reaches the operator list; cancel
+allowed then refused; double tap; reload; repeated polling of an approved
+payment; gift-card split reconciling to one correct order; the gift balance
+untouched on decline; cash creating an unpaid order only staff can settle; a
+PAN posted in the request body never reaching the database; restart durability
+with exactly one order; and the bank stubs refusing rather than approving.
+
+### Outstanding risks
+
+| Risk | Note |
+|---|---|
+| **The payment screen has not been opened in a browser.** | Prompts, the reader animation and the RTL layout are untested. |
+| **No real terminal has ever been attached.** | Everything about real card handling remains a design, not an implementation. |
+| **Refund and void are not implemented.** | The simulator has a `voided` state but nothing drives it. A real refund needs acquirer confirmation and is not simulated. |
+| **Receipts are still Phase 4.** | A payment produces an order number and nothing printable. |

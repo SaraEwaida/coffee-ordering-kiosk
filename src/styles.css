@@ -167,3 +167,66 @@ html[dir=rtl] .topbar{direction:rtl}html[dir=rtl] .photo-label{left:auto;right:1
   .confirm-card{padding:34px 24px}
   .fulfillment-row{grid-template-columns:1fr}
 }
+
+/* ===================================================================
+   Phase 3 — payment screen
+   =================================================================== */
+
+.payment-page{max-width:820px}
+.payment-amount{text-align:center;padding:26px 0 30px}
+.payment-amount>span{display:block;color:#8b7464;font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
+.payment-amount>strong{display:block;font-family:Outfit,sans-serif;font-size:clamp(44px,6vw,68px);letter-spacing:-2px;line-height:1.05}
+.payment-amount>small{display:block;color:#a08e7f;font-size:12px;margin-top:8px}
+
+.payment-methods{background:#fff;border:1px solid var(--line);border-radius:26px;padding:28px;box-shadow:var(--shadow)}
+.pay-section{margin-bottom:26px}
+.pay-section:last-child{margin-bottom:0}
+.pay-section h3{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:800;margin-bottom:8px}
+
+.gift-row{display:flex;gap:10px}
+.gift-row input{flex:1;min-height:58px;border-radius:14px;background:#fbf8f4;padding:0 18px;border:1px solid #e6dace;font-size:17px;letter-spacing:.04em}
+.gift-row .outline-button{min-height:58px;padding:0 22px}
+.gift-applied{display:flex;align-items:center;gap:8px;color:#4a7a46;font-size:13px;font-weight:700;margin:12px 0 0;line-height:1.5}
+
+/* Touch targets are generous: this is the screen where a mistap costs money. */
+.pay-method-button{display:flex;align-items:center;gap:16px;width:100%;text-align:start;
+  border:2px solid #ecdfd2;background:#fdfaf6;border-radius:18px;padding:18px;min-height:96px;
+  color:var(--dark);margin-bottom:12px}
+.pay-method-button:hover:not(:disabled){border-color:#b77548;background:#fcf1e8}
+.pay-method-icon{width:56px;height:56px;border-radius:16px;background:#f1e4d5;color:#9c5a2e;display:grid;place-items:center;flex-shrink:0}
+.pay-method-text{flex:1;min-width:0}
+.pay-method-text strong{display:block;font-size:19px;margin-bottom:3px}
+.pay-method-text small{display:block;color:#8a7568;font-size:13px;line-height:1.45}
+
+/* Each payment state looks different, because what the customer should do
+   next differs in each one. */
+.payment-stage{background:#fff;border:1px solid var(--line);border-radius:26px;padding:48px 34px;
+  box-shadow:var(--shadow);text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px}
+.payment-stage h2{font-size:clamp(24px,3vw,33px);margin:14px 0 6px;line-height:1.25}
+.payment-stage .muted-note{margin:6px 0 0}
+.payment-stage-ok{border-color:#b6d9b0;background:#fbfdfa}
+.payment-stage-ok>svg{color:#4a7a46}
+.payment-stage-bad{border-color:#e9b7a4;background:#fffbfa}
+.payment-stage-bad>svg{color:#b8553a}
+.payment-stage-staff{border-color:#e8cd93;background:#fffdf7}
+.payment-stage-staff>svg{color:#b8862f}
+
+.reader-graphic{width:156px;height:156px;border-radius:50%;display:grid;place-items:center;margin-bottom:6px}
+.reader-waiting{background:#f3e7d6;color:#9c5a2e;animation:readerPulse 1.6s ease-in-out infinite}
+.reader-processing{background:#efe6f0;color:#6b4f7a}
+@keyframes readerPulse{0%,100%{box-shadow:0 0 0 0 rgba(183,117,72,.32)}50%{box-shadow:0 0 0 22px rgba(183,117,72,0)}}
+
+.masked-card{font-size:15px;color:#6d5a4c;font-weight:700;margin:4px 0}
+.masked-card em{font-style:normal;font-size:11px;text-transform:uppercase;letter-spacing:.08em;
+  background:#f1e4d5;color:#9c5a2e;padding:3px 7px;border-radius:7px;margin-inline-start:7px}
+.split-note{font-size:14px;color:#6d5a4c;margin:4px 0}
+.payment-actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:20px}
+.payment-actions .primary-button,.payment-actions .outline-button{min-height:56px;padding:0 26px}
+
+@media(max-width:740px){
+  .payment-methods{padding:20px}
+  .payment-stage{padding:34px 20px}
+  .reader-graphic{width:120px;height:120px}
+  .gift-row{flex-direction:column}
+  .gift-row .outline-button{width:100%}
+}

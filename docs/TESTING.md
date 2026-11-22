@@ -14,7 +14,7 @@ configured to agree.
 
 ## Current result
 
-**194 tests, 194 passing, 0 failing** — about 11 seconds.
+**235 tests, 235 passing, 0 failing** — about 15 seconds.
 
 ### Platform note
 
@@ -42,6 +42,7 @@ usually a resource-cleanup problem, not a logic one.
 | `resilience.test.js` | 14 | POS offline, retry/backoff, stranded payments, restart durability, metrics |
 | `importV3.test.js` | 13 | Read-only guarantee, backups, fidelity, idempotency |
 | `migrations.test.js` | 10 | Ordering, immutability, rollback, pragmas, schema separation |
+| `payments.test.js` | 41 | Every payment outcome, gift-card split, cash, double tap, reload, restart, operator panel, bank stubs, no-card-data |
 | `kioskUi.test.js` | 26 | ILS formatting, language fallback, modifier selection rules, the exact payload the screens send |
 
 ## The tests that matter most
@@ -65,6 +66,20 @@ be, because abandoning it means a customer paid for nothing.
 **`a pending submission survives a full platform restart and then confirms`** —
 closes both databases mid-flight, rebuilds the platform from the same files,
 and asserts exactly one order appears. The real test of durability.
+
+**`the terminal that stops answering is its own state, never auto-resolved`** —
+a payment whose outcome is unknown creates no order, is not called a decline,
+and reaches a human. Guessing either way costs money or trust.
+
+**`a declined card leg leaves the gift balance untouched`** — the gift card is
+debited only when the rest of the money is secured, so an abandoned or declined
+payment never silently consumes a customer's balance.
+
+**`a client cannot smuggle card data into a payment`** — posts a PAN and CVV in
+the request body and asserts neither reaches the database.
+
+**`real bank adapters throw rather than pretending to approve`** — a stub that
+quietly returned "approved" would be the most dangerous thing in the repository.
 
 **`the overlay table has no price or availability column, by design`** — asserts
 a *structural* property. A kiosk overlay cannot override POS pricing because
@@ -108,7 +123,6 @@ Named honestly, because an untested area is not a finished one.
 | **No React component or browser tests.** The UI's pure logic is tested (formatting, modifier rules, the payload it sends) but nothing renders a component or clicks a button. | 7 |
 | **No responsive/visual checks** at 10" landscape, 10" portrait, 27" portrait. The CSS exists; nothing proves it does not overflow. | 7 |
 | **No Arabic RTL rendering tests.** All 164 keys are asserted present and distinct from English; the RTL *layout* is not verified. | 7 |
-| **No payment state-machine tests** — there is no simulator yet. | 3 |
 | **The inactivity timeout is untested.** It needs a DOM to drive events. | 7 |
 | **No concurrency test** for two kiosks submitting at the same instant. `BEGIN IMMEDIATE` plus the UNIQUE constraint should hold; it is not proven. | 7 |
 | **No load or performance measurement.** The brief's targets (touch < 100 ms, handoff < 3 s) are **unmeasured**. | 6 |

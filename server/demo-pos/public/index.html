@@ -120,6 +120,7 @@
       <button data-tab="kitchen" role="tab">Kitchen queue</button>
       <button data-tab="catalog" role="tab">Menu &amp; prices</button>
       <button data-tab="audit" role="tab">Audit log</button>
+      <button data-tab="payments" role="tab">Payments</button>
       <button data-tab="demo" role="tab">Demo controls</button>
     </div>
     <div id="globalError" class="notice err hidden"></div>
@@ -154,6 +155,43 @@
       <table>
         <thead><tr><th>When</th><th>Actor</th><th>Event</th><th>Entity</th><th>Detail</th></tr></thead>
         <tbody id="auditRows"></tbody>
+      </table>
+    </section>
+
+    <!-- payments -->
+    <section id="tab-payments" class="card hidden">
+      <h2>Payment simulator <span id="payDefault" class="pill"></span></h2>
+      <div class="notice warn">
+        Simulated terminal. <strong>No real card is ever charged.</strong> Card
+        brands and references shown are fabricated for demonstration and are not
+        authorization codes.
+      </div>
+      <div class="row" style="margin-bottom:18px">
+        <div>
+          <label for="defaultOutcome">What the next payment will do</label>
+          <select id="defaultOutcome">
+            <option value="approved">Approve</option>
+            <option value="declined">Decline</option>
+            <option value="timed_out">Time out (no card presented)</option>
+            <option value="failed">Reader error</option>
+            <option value="unknown">Stop answering (needs staff)</option>
+          </select>
+        </div>
+        <div style="flex:0 0 auto"><button id="applyOutcome">Set</button></div>
+      </div>
+
+      <h2 style="margin-top:24px">Needs attention <span id="payAttentionCount" class="pill"></span></h2>
+      <p class="muted" id="payAttentionEmpty">Nothing outstanding. Payments that stop
+        answering, or that were approved without an order, appear here.</p>
+      <table id="payAttentionTable" class="hidden">
+        <thead><tr><th>Payment</th><th>State</th><th class="num">Amount</th><th>Reference</th><th>When</th><th></th></tr></thead>
+        <tbody id="payAttentionRows"></tbody>
+      </table>
+
+      <h2 style="margin-top:24px">Terminal adapters</h2>
+      <table>
+        <thead><tr><th>Adapter</th><th>Status</th></tr></thead>
+        <tbody id="adapterRows"></tbody>
       </table>
     </section>
 
@@ -281,7 +319,7 @@ async function enterApp() {
   $('whoami').textContent = `${user.username} (${user.role})`;
 
   // A barista has no business in the catalog, the audit log or demo controls.
-  const managerOnly = ['catalog', 'audit', 'demo'];
+  const managerOnly = ['catalog', 'audit', 'payments', 'demo'];
   for (const button of document.querySelectorAll('.tabs button')) {
     button.classList.toggle('hidden', managerOnly.includes(button.dataset.tab) && user.role !== 'manager');
   }
@@ -308,12 +346,13 @@ function selectTab(name) {
   for (const button of document.querySelectorAll('.tabs button')) {
     button.setAttribute('aria-selected', String(button.dataset.tab === name));
   }
-  for (const tab of ['kitchen', 'catalog', 'audit', 'demo']) {
+  for (const tab of ['kitchen', 'catalog', 'audit', 'payments', 'demo']) {
     $('tab-' + tab).classList.toggle('hidden', tab !== name);
   }
   if (name === 'kitchen') loadKitchen();
   if (name === 'catalog') loadCatalog();
   if (name === 'audit') loadAudit();
+  if (name === 'payments') loadPayments();
   if (name === 'demo') loadFaults();
 }
 
@@ -461,6 +500,55 @@ function summarise(payload) {
   if (payload.totalMinor !== undefined) parts.push(money(payload.totalMinor));
   return parts.join(' · ') || Object.keys(payload).slice(0, 3).join(', ');
 }
+
+/* --------------------------------------------------------------- payments */
+async function loadPayments() {
+  try {
+    const data = await call('GET', '/demo/payments');
+    const list = data.needingAttention ?? [];
+    $('payAttentionCount').textContent = `${list.length}`;
+    $('payAttentionEmpty').classList.toggle('hidden', list.length > 0);
+    $('payAttentionTable').classList.toggle('hidden', list.length === 0);
+    $('payAttentionRows').innerHTML = list.map((p) => `
+      <tr>
+        <td class="mods">${escapeHtml(p.paymentId.slice(0, 8))}…</td>
+        <td><span class="pill ${p.state === 'unknown' ? 'bad' : 'warn'}">${escapeHtml(p.state)}</span></td>
+        <td class="num">${money(p.amountMinor)}</td>
+        <td class="mods">${escapeHtml(p.reference || '—')}</td>
+        <td class="mods">${escapeHtml(new Date(p.createdAt).toLocaleTimeString())}</td>
+        <td><button class="small ghost" data-events="${escapeHtml(p.paymentId)}">History</button></td>
+      </tr>`).join('');
+    for (const button of $('payAttentionRows').querySelectorAll('[data-events]')) {
+      button.addEventListener('click', () => showPaymentHistory(button.dataset.events));
+    }
+    $('adapterRows').innerHTML = (data.adapters ?? []).map((a) => `
+      <tr>
+        <td>${escapeHtml(a.name)}</td>
+        <td>${a.implemented
+          ? '<span class="pill ok">Working (simulated)</span>'
+          : '<span class="pill bad">Not implemented &mdash; SDK and certified hardware needed</span>'}</td>
+      </tr>`).join('');
+  } catch (error) { showError(error.message); }
+}
+
+async function showPaymentHistory(paymentId) {
+  try {
+    const { events } = await call('GET', `/demo/payments/${encodeURIComponent(paymentId)}/events`);
+    const lines = events.map((e) =>
+      `${new Date(e.created_at).toLocaleTimeString()}  ${e.from_state || '(start)'} -> ${e.to_state}  [${e.actor}]`);
+    alert(`Payment ${paymentId}\n\n${lines.join('\n')}`);
+  } catch (error) { showError(error.message); }
+}
+
+$('applyOutcome').addEventListener('click', async () => {
+  try {
+    const result = await call('POST', '/demo/payments/default-outcome', {
+      outcome: $('defaultOutcome').value,
+    });
+    $('payDefault').textContent = `next: ${result.defaultOutcome}`;
+    showOk(`The next payment will ${result.defaultOutcome.replace('_', ' ')}.`);
+  } catch (error) { showError(error.message); }
+});
 
 /* ------------------------------------------------------------ demo faults */
 async function loadFaults() {

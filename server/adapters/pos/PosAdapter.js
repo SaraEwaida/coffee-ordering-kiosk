@@ -198,6 +198,15 @@ export class PosAdapter {
     throw new Error(`${this.constructor.name} must implement attachPayment()`);
   }
 
+  /**
+   * Debit a gift card. Must be atomic with its ledger entry: a balance that
+   * moves without a ledger row, or the reverse, is unreconcilable money.
+   * @returns {Promise<{code:string, redeemedMinor:number, balanceMinor:number, currency:string}>}
+   */
+  async redeemGiftCard(_input) {
+    throw new Error(`${this.constructor.name} must implement redeemGiftCard()`);
+  }
+
   /** @returns {Promise<CanonicalOrder>} */
   async getOrderStatus(_posOrderId) {
     throw new Error(`${this.constructor.name} must implement getOrderStatus()`);

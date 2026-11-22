@@ -70,6 +70,26 @@ export const api = {
 
   promotion: (code) => request(`/promotions/${encodeURIComponent(code)}`),
 
+  /**
+   * Start a payment. Note what is NOT here: an amount. The server reads it
+   * from the stored quote, so a browser cannot say what an order costs.
+   */
+  startPayment: ({ quoteId, clientRequestId, kioskId, method, giftCardCode }) =>
+    request('/payments', {
+      method: 'POST',
+      body: { quoteId, clientRequestId, kioskId, method, giftCardCode },
+    }),
+
+  paymentStatus: (paymentId) => request(`/payments/${encodeURIComponent(paymentId)}`),
+
+  cancelPayment: (paymentId) =>
+    request(`/payments/${encodeURIComponent(paymentId)}/cancel`, { method: 'POST' }),
+
+  payCash: ({ quoteId, clientRequestId, kioskId }) =>
+    request('/payments/cash', { method: 'POST', body: { quoteId, clientRequestId, kioskId } }),
+
+  giftCard: (code) => request(`/gift-cards/${encodeURIComponent(code)}`),
+
   heartbeat: (kioskId, appVersion) =>
     request(`/kiosks/${encodeURIComponent(kioskId)}/heartbeat`, {
       method: 'POST',

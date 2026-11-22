@@ -178,13 +178,64 @@ present today.
 
 ---
 
-## Phases 3–7 — not started
+## Phase 3 — Payment simulator, gift cards, recovery — **complete and tested**
+
+| # | Item | Status |
+|---|---|---|
+| 3.1 | `PaymentAdapter` contract and deterministic `SimulatorPaymentAdapter` with the full state machine | Implemented + tested |
+| 3.2 | Realistic tap / insert / swipe prompts, bilingual, no card data in the browser | Implemented; **not browser-tested** |
+| 3.3 | Authenticated demo operator panel to force any outcome | Implemented + tested |
+| 3.4 | Card brands shown as **simulated**, no fictional authorization codes | Implemented + tested |
+| 3.5 | Cash at counter: unpaid POS order, only staff can mark it received | Implemented + tested |
+| 3.6 | Gift cards: validate, redeem atomically, split payment, rollback on failure | Implemented + tested |
+| 3.7 | Payment outcome and reference persisted and attached to the POS order | Implemented + tested |
+| 3.8 | Declines, cancels, timeouts, double taps, reloads, restarts without double charge | Implemented + tested |
+| 3.9 | Approved-then-POS-failure: durable, retried, escalated | Implemented + tested (Phase 1 path) |
+| 3.10 | Arab Bank / Bank of Palestine stubs, clearly not implemented | Implemented + tested |
+
+### The state machine
+
+```
+created ──▶ waiting_for_card ──▶ processing ──▶ approved
+                   │                   ├──────▶ declined
+                   │                   ├──────▶ failed
+                   ├──▶ timed_out      └──────▶ unknown  ← needs a human
+                   └──▶ cancelled
+```
+
+`unknown` is the reason this is a state machine and not a boolean. A terminal
+can stop answering after the card was presented but before the outcome is
+known. Calling that a decline risks serving an unpaid order; calling it an
+approval gives coffee away. It is its own state, it is **never auto-resolved**,
+and it goes to the operator exception list with a message telling the customer
+to speak to staff *before paying again*.
+
+Two further rules the tests enforce:
+
+- **Cancellation is refused once processing starts.** At that point the
+  acquirer may already hold the authorisation, so letting a customer "cancel"
+  would be a lie.
+- **A gift card is not debited until the money is actually taken.** A customer
+  who walks away at the card prompt is never left out of pocket, and a declined
+  card leg leaves the balance untouched.
+
+### Phase 3 acceptance — met
+
+- [x] Approve, decline, cancel, timeout each behave correctly and distinctly
+- [x] Gift-card split payment reconciles to one correct POS order
+- [x] Cash creates an unpaid order; only authenticated staff can settle it
+- [x] POS failure after approval is durable, retried and escalated
+- [x] Recovery after restart, with exactly one order
+- [x] Duplicate submission prevented at both the payment and the order layer
+
+---
+
+## Phases 4–7 — not started
 
 Scope is fixed by the project brief; no code yet. Listed so status stays honest.
 
 | Phase | Summary | Status |
 |---|---|---|
-| 3 | Payment simulator state machine, gift cards, split payment, cash-at-counter, approved-then-POS-failure recovery | Not started |
 | 4 | Local device service, printer adapter, 80 mm receipts, QR digital receipts | Not started |
 | 5 | Config console, branding, multi-tenant isolation, rebrand without code edits | Not started |
 | 6 | Windows kiosk deployment, provisioning, fleet health, offline policy | Not started |

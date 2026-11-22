@@ -16,7 +16,7 @@ not a replacement POS. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 ```bash
 npm install
 npm run dev           # vite (5173) + the kiosk platform (4001)
-npm test              # 194 tests
+npm test              # 235 tests
 ```
 
 The kiosk UI talks to the platform API on 4001. The Version 3 Express API is
@@ -70,13 +70,16 @@ Honest status. "Tested" means an automated test or a recorded run proves it.
 | Non-destructive V3 import | Read-only source, timestamped backup, idempotent |
 | Bloom Rewards data | Preserved and imported; the customer-facing flow returns in Phase 2.8 |
 | Kiosk UI on the new API | Shekels, VAT-inclusive, bakery and snacks, real modifier groups, dine-in surcharge, inactivity timeout, full Arabic parity |
+| Unattended card-reader simulator | Full state machine: tap/insert prompts, approve, decline, timeout, cancel, and a terminal that stops answering |
+| Gift cards and split payment | Validated and debited atomically; a declined card leg never consumes the balance |
+| Cash at counter | Creates an unpaid order; only authenticated staff can mark cash received |
+| Payment operator panel | Force any outcome live, for demonstrating declines and failures on purpose |
 
 ### Deliberately not built yet
 
 | Feature | Phase |
 |---|---|
 | Upselling, promo-code entry, table numbers, Bloom Rewards customer flow | 2 |
-| Payment simulator state machine, gift-card split payment, cash-at-counter flow | 3 |
 | Printer adapter, 80 mm receipts, local device service, QR digital receipts | 4 |
 | Config console, branding, multi-tenant isolation | 5 |
 | Windows kiosk lockdown, provisioning, fleet console, offline policy | 6 |
@@ -86,7 +89,7 @@ Honest status. "Tested" means an automated test or a recorded run proves it.
 
 | Blocker | Needs |
 |---|---|
-| Arab Bank / Bank of Palestine terminals | Vendor SDK, unattended certification, test hardware |
+| Arab Bank / Bank of Palestine terminals | Vendor SDK, **unattended-mode certification**, test terminal and cards. The adapters exist and throw rather than pretending — see `server/adapters/payments/BankTerminalStubs.js` for the full blocked-on list. |
 | Zebra receipt printer | Model, Windows driver, Arabic glyph confirmation |
 | SMS / WhatsApp / email receipts | A contracted provider and a consent model |
 | Real client POS | Endpoint docs, credentials, item/modifier ID export |

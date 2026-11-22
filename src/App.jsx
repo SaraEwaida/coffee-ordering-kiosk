@@ -4,6 +4,7 @@ import Menu from './pages/Menu.jsx';
 import CustomizeDrink from './pages/CustomizeDrink.jsx';
 import Cart from './pages/Cart.jsx';
 import Checkout from './pages/Checkout.jsx';
+import Payment from './pages/Payment.jsx';
 import Confirmation from './pages/Confirmation.jsx';
 import IdleWarning from './components/IdleWarning.jsx';
 import { api, ApiError, newClientRequestId } from './api.js';
@@ -181,34 +182,33 @@ export default function App() {
   // arrives at checkout and reused for every retry.
   const requestIdRef = useRef(null);
 
-  const placeOrder = useCallback(async () => {
-    if (!quote?.quoteId || placing) return;
+  /**
+   * Move to payment. The order is NOT created here: it is created when the
+   * payment is approved, with the payment attached, so an approval and an
+   * order are made in one idempotent step on the server.
+   */
+  const goToPayment = useCallback(() => {
+    if (!quote?.quoteId) return;
+    // One idempotency key per checkout attempt, covering both the payment and
+    // the order it produces.
     if (!requestIdRef.current) requestIdRef.current = newClientRequestId(KIOSK_ID);
-    setPlacing(true);
     setOrderError(null);
-    try {
-      const result = await api.submitOrder({
-        clientRequestId: requestIdRef.current,
-        quoteId: quote.quoteId,
-        kioskId: KIOSK_ID,
-      });
-      setOrder(result);
-      setCart([]);
-      requestIdRef.current = null;
-      go('success');
-    } catch (error) {
-      const apiError = error instanceof ApiError ? error : new ApiError('offline');
-      setOrderError(apiError);
-      // A changed menu invalidates the quote, so the next attempt is a new
-      // checkout and needs a new key.
-      if (['menu_changed', 'conflict', 'item_unavailable', 'quote_mismatch'].includes(apiError.code)) {
-        requestIdRef.current = null;
-        loadMenu();
-      }
-    } finally {
-      setPlacing(false);
-    }
-  }, [quote, placing, loadMenu]);
+    go('payment');
+  }, [quote]);
+
+  const handlePaid = useCallback((result, paymentSession) => {
+    setOrder({ ...result, payment: paymentSession ?? null });
+    setCart([]);
+    requestIdRef.current = null;
+    go('success');
+  }, []);
+
+  const handlePaymentAbandoned = useCallback(() => {
+    // The customer backed out before paying. The cart stays, but the next
+    // attempt is a new checkout and needs a fresh key.
+    requestIdRef.current = null;
+    go('cart');
+  }, []);
 
   // ---- navigation and session reset -------------------------------------
   function go(next) {
@@ -246,7 +246,10 @@ export default function App() {
 
   // The idle timeout runs on every screen except the attract screen and the
   // confirmation, where there is nothing to abandon.
-  const idleActive = page !== 'welcome' && page !== 'success';
+  // Never time out during payment: the customer may be reaching for a card,
+  // and clearing the session mid-authorisation is exactly how a payment gets
+  // taken with no order attached.
+  const idleActive = !['welcome', 'success', 'payment'].includes(page);
 
   return (
     <>
@@ -309,10 +312,21 @@ export default function App() {
           onFulfillment={setFulfillment}
           onBack={() => go('cart')}
           cartCount={cartCount}
-          onPlace={placeOrder}
+          onPlace={goToPayment}
           placing={placing}
           error={orderError}
           onFixCart={() => go('cart')}
+        />
+      )}
+      {page === 'payment' && quote && (
+        <Payment
+          {...common}
+          quote={quote}
+          clientRequestId={requestIdRef.current}
+          kioskId={KIOSK_ID}
+          onBack={() => go('checkout')}
+          onPaid={handlePaid}
+          onCancelled={handlePaymentAbandoned}
         />
       )}
       {page === 'success' && order && (

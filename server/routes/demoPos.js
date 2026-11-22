@@ -3,8 +3,10 @@ import { badRequest, notFound, unauthorized, validationFailed } from '../lib/err
 import { posAuth, requireRole } from '../demo-pos/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { PosRejectedError } from '../adapters/pos/PosAdapter.js';
+import { PaymentRejectedError, PaymentUnavailableError } from '../adapters/payments/PaymentAdapter.js';
 import { AppError } from '../lib/errors.js';
 import { parseMajorToMinor } from '../../shared/money.js';
+import { paymentAdapterRegistry } from '../adapters/payments/BankTerminalStubs.js';
 
 /**
  * Demo POS API — the shop's own till, not part of the kiosk.
@@ -18,22 +20,59 @@ import { parseMajorToMinor } from '../../shared/money.js';
  *   barista  — kitchen queue and order status only
  *   readonly — read endpoints only
  */
-export function demoPosRoutes({ store, adapter, logger }) {
+export function demoPosRoutes({ store, adapter, paymentAdapter, logger }) {
   const router = Router();
   const auth = posAuth(store);
   const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 
   const actorOf = (req) => ({ type: req.posUser.role, id: req.posUser.id });
 
-  /** Turn a POS refusal into the shared API error model. */
+  /** Demo controls must never be reachable in a production configuration. */
+  function requireNonProduction() {
+    if (process.env.NODE_ENV === 'production') {
+      throw new AppError('forbidden', 'Demo controls are disabled in production.', { status: 403 });
+    }
+  }
+
+  /**
+   * Turn an adapter refusal into the shared API error model.
+   *
+   * Without this a refusal — "that payment has already finished" — reaches the
+   * terminal error handler as an unknown throw and becomes a 500 "something
+   * went wrong", which tells an operator nothing and looks like a crash.
+   */
+  function translate(error) {
+    if (error instanceof PosRejectedError) {
+      return new AppError(error.code ?? 'pos_rejected', error.message, { status: 400, details: error.details });
+    }
+    if (error instanceof PaymentRejectedError) {
+      return new AppError(error.code ?? 'payment_rejected', error.message, {
+        status: error.code === 'payment_not_found' ? 404 : 409,
+        details: error.details,
+      });
+    }
+    if (error instanceof PaymentUnavailableError) {
+      return new AppError(error.code ?? 'terminal_unavailable', error.message, {
+        status: 503, details: error.details,
+      });
+    }
+    return error;
+  }
+
   const guard = (fn) => {
     try {
       return fn();
     } catch (error) {
-      if (error instanceof PosRejectedError) {
-        throw new AppError(error.code ?? 'pos_rejected', error.message, { status: 400, details: error.details });
-      }
-      throw error;
+      throw translate(error);
+    }
+  };
+
+  /** Same, for the async adapter calls. */
+  const guardAsync = async (fn) => {
+    try {
+      return await fn();
+    } catch (error) {
+      throw translate(error);
     }
   };
 
@@ -242,9 +281,7 @@ export function demoPosRoutes({ store, adapter, logger }) {
    * refused outright when NODE_ENV is production.
    */
   router.post('/demo/faults', auth, requireRole('manager'), (req, res) => {
-    if (process.env.NODE_ENV === 'production') {
-      throw new AppError('forbidden', 'Fault injection is disabled in production.', { status: 403 });
-    }
+    requireNonProduction();
     const { offline, latencyMs, failOnSubmit } = req.body ?? {};
     const faults = {};
     if (offline !== undefined) faults.offline = Boolean(offline);
@@ -258,6 +295,43 @@ export function demoPosRoutes({ store, adapter, logger }) {
     const applied = adapter.setFaults(faults);
     store.audit(actorOf(req), 'demo.faults_changed', 'adapter', 'demo-pos', applied);
     res.json({ faults: applied, warning: 'Development fault injection. Not available in production.' });
+  });
+
+  // ------------------------------------------- demo payment operator panel
+  /**
+   * Force a payment outcome during a demonstration.
+   *
+   * Manager-authenticated and refused in production. This is how a decline, a
+   * timeout or a terminal that stops answering gets shown to a client on
+   * purpose, instead of hoping one happens.
+   */
+  router.post('/demo/payments/:id/force', auth, requireRole('manager'), asyncRoute(async (req, res) => {
+    requireNonProduction();
+    const { outcome } = req.body ?? {};
+    const session = await guardAsync(() =>
+      paymentAdapter.forceOutcome(req.params.id, outcome, { actor: req.posUser.username }));
+    store.audit(actorOf(req), 'demo.payment_forced', 'payment', req.params.id, { outcome });
+    res.json(session);
+  }));
+
+  /** What the NEXT payment will do, for a scripted demonstration. */
+  router.post('/demo/payments/default-outcome', auth, requireRole('manager'), (req, res) => {
+    requireNonProduction();
+    const outcome = guard(() => paymentAdapter.setDefaultOutcome(req.body?.outcome));
+    store.audit(actorOf(req), 'demo.payment_default_changed', 'adapter', 'simulator', { outcome });
+    res.json({ defaultOutcome: outcome, warning: 'Development only. No real card is ever charged.' });
+  });
+
+  /** Live payments, so an operator can watch and intervene. */
+  router.get('/demo/payments', auth, requireRole('manager'), (_req, res) => {
+    res.json({
+      needingAttention: paymentAdapter.listNeedingAttention(),
+      adapters: paymentAdapterRegistry(),
+    });
+  });
+
+  router.get('/demo/payments/:id/events', auth, requireRole('manager'), (req, res) => {
+    res.json({ events: paymentAdapter.listEvents(req.params.id) });
   });
 
   router.get('/health', (_req, res) => {

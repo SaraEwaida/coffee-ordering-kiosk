@@ -44,6 +44,10 @@ Internal detail is logged, never returned.
 | `mapping_missing` | 409 | No POS mapping for an item — an integration fault |
 | `payment_amount_mismatch` | 409 | Payment does not equal the order total |
 | `payment_taken_order_failed` | 409 | **Money moved but no order exists.** Send the customer to staff with `details.reference`. |
+| `payment_not_cancellable` | 409 | The card is being processed; cancellation is refused |
+| `payment_needs_staff` | 409 | The terminal stopped answering. A human must confirm. |
+| `gift_card_empty` / `gift_card_invalid` | 409 / 404 | Gift card has no balance, or was not recognised |
+| `adapter_not_implemented` | 503 | A real bank terminal adapter was called. `details.blockedOn` lists what is needed. |
 | `rate_limited` | 429 | Too many attempts |
 | `pos_unavailable` | 503 | Till unreachable; retryable |
 | `internal_error` | 500 | Unexpected; detail is in the logs only |
@@ -159,6 +163,60 @@ Order and kitchen status, for an order-ready display.
 Validate via the adapter. **404** when invalid. Gift-card responses mask the
 code to its last four characters.
 
+### `POST /api/kiosk/payments`
+Start paying for a quote.
+
+```json
+{ "quoteId": "fc47af31-…", "clientRequestId": "kiosk01-1795342620-a7f3",
+  "kioskId": "kiosk-01", "method": "card_simulated",
+  "giftCardCode": "DEMO-GIFT-1200" }
+```
+
+**There is no amount in this request, and there cannot be.** The server reads
+the total from the stored quote. An `amountMinor` sent by a client is ignored,
+and a test asserts it.
+
+**201**:
+
+```json
+{ "paymentId": "…", "state": "waiting_for_card", "method": "card_simulated",
+  "amountMinor": 1900, "currency": "ILS",
+  "giftCardCode": "••••1200", "giftAppliedMinor": 1200, "cardAmountMinor": 700,
+  "promptEn": "Tap, insert or swipe your card",
+  "promptAr": "قرّب بطاقتك أو أدخلها أو مرّرها",
+  "cancellable": true, "terminal": false, "needsStaff": false, "simulated": true }
+```
+
+Show `promptEn`/`promptAr` verbatim. The gift-card code comes back masked — it
+is a bearer credential.
+
+A second POST with the same `clientRequestId` returns the payment already in
+flight. A double tap cannot open two payments.
+
+### `GET /api/kiosk/payments/:id`
+Poll. Also the moment an approval becomes a POS order, so the response carries
+`order` once it exists.
+
+| `state` | What the screen should do |
+|---|---|
+| `waiting_for_card` | Show the tap prompt. Cancel is offered. |
+| `processing` | Show a spinner. **Cancel is refused** — the acquirer may already hold the authorisation. |
+| `approved` | Show success and the order number from `order.posOrderNumber`. |
+| `declined` | Say the card was declined and that **no money was taken**. Offer retry. |
+| `timed_out` | No card was presented. Offer retry. |
+| `cancelled` | Returned to the cart. |
+| `failed` | Reader problem. Offer retry. |
+| `unknown` | **Stop.** Send the customer to a member of staff with `reference`, and tell them not to pay again yet. |
+
+### `POST /api/kiosk/payments/:id/cancel`
+**409 `payment_not_cancellable`** once processing has begun, and
+**409 `payment_needs_staff`** when the state is `unknown`.
+
+### `POST /api/kiosk/payments/cash`
+Creates the POS order marked **unpaid**. Nothing in the kiosk can mark cash
+received; a member of staff records it through
+`POST /demo-pos/api/orders/:id/payments`.
+
 ### `GET /api/kiosk/health`
 **200** healthy, **503** when the POS is unreachable or ops exceptions exist.
 Reports adapter reachability, error rate, latency, menu age and queue depth.
@@ -183,7 +241,11 @@ All routes except `/health` need `Authorization: Bearer <token>`.
 | `/orders/:id/payments` | POST | manager, barista |
 | `/products/:id`, `/modifiers/:id`, `/config` | PATCH | **manager** |
 | `/audit` | GET | **manager** |
-| `/demo/faults` | POST | **manager**, and refused when `NODE_ENV=production` |
+| `/demo/faults` | POST | **manager**, refused when `NODE_ENV=production` |
+| `/demo/payments` | GET | **manager** — payments needing attention, adapter status |
+| `/demo/payments/default-outcome` | POST | **manager** — what the next payment will do |
+| `/demo/payments/:id/force` | POST | **manager** — force an outcome on a live payment |
+| `/demo/payments/:id/events` | GET | **manager** — full state history for a dispute |
 | `/health` | GET | — |
 
 ### `POST /demo-pos/api/auth/login`

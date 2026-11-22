@@ -10,7 +10,7 @@ import { badRequest, notFound } from '../lib/errors.js';
  * No route here mutates the catalog: price and availability belong to the POS,
  * so the kiosk channel is read-only over them by construction.
  */
-export function kioskRoutes({ menuSync, checkout, kioskStore, storeId, logger }) {
+export function kioskRoutes({ menuSync, checkout, payments, kioskStore, storeId, logger }) {
   const router = Router();
 
   const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -111,6 +111,39 @@ export function kioskRoutes({ menuSync, checkout, kioskStore, storeId, logger })
   router.get('/gift-cards/:code', asyncRoute(async (req, res) => {
     const result = await checkout.adapter.validateCouponOrLoyalty({ code: req.params.code, kind: 'gift_card' });
     res.status(result.valid ? 200 : 404).json(result);
+  }));
+
+  // ---------------------------------------------------------------- payments
+  /**
+   * Start paying for a quote.
+   *
+   * The amount is NOT in this request and cannot be: the server reads it from
+   * the stored quote. A browser has no way to say what an order costs.
+   */
+  router.post('/payments', asyncRoute(async (req, res) => {
+    const { quoteId, clientRequestId, kioskId, method, giftCardCode } = req.body ?? {};
+    if (!quoteId) throw badRequest('A quote is required.');
+    const session = await payments.startPayment({ quoteId, clientRequestId, kioskId, method, giftCardCode });
+    res.status(201).json(session);
+  }));
+
+  /** Poll the terminal. Also the moment an approval becomes a POS order. */
+  router.get('/payments/:id', asyncRoute(async (req, res) => {
+    const session = await payments.getStatus(req.params.id);
+    res.json(session);
+  }));
+
+  router.post('/payments/:id/cancel', asyncRoute(async (req, res) => {
+    const session = await payments.cancel(req.params.id, { actor: 'customer' });
+    res.json(session);
+  }));
+
+  /** Cash at the counter: an unpaid order the staff will settle. */
+  router.post('/payments/cash', asyncRoute(async (req, res) => {
+    const { quoteId, clientRequestId, kioskId } = req.body ?? {};
+    if (!quoteId) throw badRequest('A quote is required.');
+    const result = await payments.payAtCounter({ quoteId, clientRequestId, kioskId });
+    res.status(result.status === 'confirmed' ? 201 : 202).json(result);
   }));
 
   // ------------------------------------------------------------------ health
