@@ -16,7 +16,7 @@ not a replacement POS. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 ```bash
 npm install
 npm run dev           # vite (5173) + the kiosk platform (4001)
-npm test              # 245 tests
+npm test              # 267 tests
 ```
 
 The kiosk UI talks to the platform API on 4001. The Version 3 Express API is

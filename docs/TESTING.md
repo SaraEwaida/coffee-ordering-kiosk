@@ -14,7 +14,7 @@ configured to agree.
 
 ## Current result
 
-**245 tests, 245 passing, 0 failing** — about 19 seconds.
+**267 tests, 267 passing, 0 failing** — about 18 seconds.
 
 ### Platform note
 
@@ -43,6 +43,7 @@ usually a resource-cleanup problem, not a logic one.
 | `importV3.test.js` | 13 | Read-only guarantee, backups, fidelity, idempotency |
 | `migrations.test.js` | 10 | Ordering, immutability, rollback, pragmas, schema separation |
 | `payments.test.js` | 41 | Every payment outcome, gift-card split, cash, double tap, reload, restart, operator panel, bank stubs, no-card-data |
+| `passwordPrompt.test.js` | 22 | The hidden terminal prompt: the question is shown, nothing echoes, and no key can corrupt a password |
 | `kioskUi.test.js` | 26 | ILS formatting, language fallback, modifier selection rules, the exact payload the screens send |
 
 ## The tests that matter most
@@ -66,6 +67,18 @@ be, because abandoning it means a customer paid for nothing.
 **`a pending submission survives a full platform restart and then confirms`** —
 closes both databases mid-flight, rebuilds the platform from the same files,
 and asserts exactly one order appears. The real test of durability.
+
+**`arrow keys and control characters are ignored, not inserted`** — an arrow
+key sends `ESC [ A`. The ESC is filtered as a control character but `[` and `A`
+are printable, so they were being inserted into the password. With no echo the
+user could not see it, so they would set a password containing characters they
+never typed and lock themselves out. F1 leaked the same way through `ESC O P`.
+
+**`the question is written before any input arrives`** — the first version
+wrote the prompt and then created a readline interface, which redrew the line
+from its own empty prompt and wiped it. The script looked hung. Nothing caught
+it because the interactive path had never been exercised: piped input takes a
+different branch.
 
 **`the terminal that stops answering is its own state, never auto-resolved`** —
 a payment whose outcome is unknown creates no order, is not called a decline,
