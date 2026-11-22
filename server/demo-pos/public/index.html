@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo POS — Bean &amp; Bloom (staff only)</title>
+<!--
+  Demo POS staff console.
+
+  This is the SHOP'S TILL, not the customer kiosk. It stands in for the
+  client's real POS during the proof of concept.
+
+  Deliberately plain, dependency-free and separate from the kiosk's React
+  bundle: it is a demonstration backend, so it must never look like, ship with,
+  or be reachable from the customer-facing kiosk. Staff screens are English
+  only — the bilingual requirement applies to the customer kiosk.
+-->
+<style>
+  :root {
+    --bg: #12100e; --panel: #1c1917; --line: #322c28; --text: #f5f1ec;
+    --muted: #a8a09a; --accent: #c98a4b; --ok: #4a9c6d; --warn: #c9a24b; --bad: #c25a4b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 17px; margin: 0; letter-spacing: .02em; }
+  .badge {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+    padding: 3px 8px; border-radius: 3px; background: #3a2f22; color: var(--accent);
+    border: 1px solid #4a3b28;
+  }
+  .spacer { flex: 1; }
+  main { padding: 20px; max-width: 1100px; margin: 0 auto; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 6px; padding: 18px; margin-bottom: 18px;
+  }
+  .card h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--muted); margin: 0 0 14px; font-weight: 600; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input, select {
+    background: #0d0c0b; border: 1px solid var(--line); color: var(--text);
+    padding: 9px 10px; border-radius: 4px; font: inherit; width: 100%;
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button {
+    background: var(--accent); color: #17120c; border: 0; padding: 9px 14px;
+    border-radius: 4px; font: inherit; font-weight: 600; cursor: pointer;
+    min-height: 40px;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 500; }
+  button.small { padding: 6px 10px; min-height: 32px; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 150px; }
+  .pill { font-size: 11px; padding: 2px 7px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); }
+  .pill.ok { color: var(--ok); border-color: #2d5c42; }
+  .pill.bad { color: var(--bad); border-color: #6b332b; }
+  .pill.warn { color: var(--warn); border-color: #6b5a2b; }
+  .notice { padding: 10px 12px; border-radius: 4px; font-size: 13px; margin-bottom: 14px; }
+  .notice.err { background: #2e1a17; border: 1px solid #6b332b; color: #f0c4bc; }
+  .notice.ok { background: #16261d; border: 1px solid #2d5c42; color: #bfe3cf; }
+  .notice.warn { background: #2a2416; border: 1px solid #6b5a2b; color: #ebdcae; }
+  .hidden { display: none !important; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
+  .tabs button { background: transparent; border: 1px solid var(--line); color: var(--muted); font-weight: 500; }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: #17120c; border-color: var(--accent); font-weight: 600; }
+  code { background: #0d0c0b; padding: 1px 5px; border-radius: 3px; font-size: 12px; color: var(--accent); }
+  .mods { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Demo POS</h1>
+  <span class="badge">Shop till &middot; staff only</span>
+  <span class="spacer"></span>
+  <span id="whoami" class="muted"></span>
+  <button id="logout" class="ghost small hidden">Sign out</button>
+</header>
+
+<main>
+  <!-- ---------------------------------------------------------------- login -->
+  <section id="loginView" class="card" style="max-width: 420px; margin: 40px auto;">
+    <h2>Till sign-in</h2>
+    <div id="loginError" class="notice err hidden"></div>
+    <div class="notice warn">
+      This is the shop's till, not the customer kiosk. Development builds create
+      the accounts <code>manager</code> and <code>barista</code> with known
+      passwords — set <code>POS_MANAGER_PASSWORD</code> and
+      <code>POS_BARISTA_PASSWORD</code> before any real deployment.
+    </div>
+    <form id="loginForm">
+      <div style="margin-bottom:12px">
+        <label for="username">Username</label>
+        <input id="username" autocomplete="username" value="manager" required>
+      </div>
+      <div style="margin-bottom:16px">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" value="demo-manager-1234" required>
+      </div>
+      <button type="submit" style="width:100%">Sign in</button>
+    </form>
+  </section>
+
+  <!-- ------------------------------------------------------------ main app -->
+  <div id="appView" class="hidden">
+    <div class="tabs" role="tablist">
+      <button data-tab="kitchen" role="tab">Kitchen queue</button>
+      <button data-tab="catalog" role="tab">Menu &amp; prices</button>
+      <button data-tab="audit" role="tab">Audit log</button>
+      <button data-tab="demo" role="tab">Demo controls</button>
+    </div>
+    <div id="globalError" class="notice err hidden"></div>
+    <div id="globalOk" class="notice ok hidden"></div>
+
+    <!-- kitchen -->
+    <section id="tab-kitchen" class="card">
+      <h2>Kitchen queue <span id="queueCount" class="pill"></span></h2>
+      <p class="muted" id="kitchenEmpty">Nothing waiting. Orders placed on the kiosk appear here.</p>
+      <div id="queueList"></div>
+    </section>
+
+    <!-- catalog -->
+    <section id="tab-catalog" class="card hidden">
+      <h2>Menu &amp; prices <span id="menuVersion" class="pill"></span></h2>
+      <p class="muted">
+        Prices include VAT. A change here is the authoritative price; the kiosk
+        picks it up on its next sync (every 30 seconds).
+      </p>
+      <table>
+        <thead>
+          <tr><th>Product</th><th>POS ID</th><th class="num">Price</th><th>Stock</th><th></th></tr>
+        </thead>
+        <tbody id="productRows"></tbody>
+      </table>
+    </section>
+
+    <!-- audit -->
+    <section id="tab-audit" class="card hidden">
+      <h2>Audit log</h2>
+      <p class="muted">Every change is recorded with who made it and when.</p>
+      <table>
+        <thead><tr><th>When</th><th>Actor</th><th>Event</th><th>Entity</th><th>Detail</th></tr></thead>
+        <tbody id="auditRows"></tbody>
+      </table>
+    </section>
+
+    <!-- demo controls -->
+    <section id="tab-demo" class="card hidden">
+      <h2>Demo controls</h2>
+      <div class="notice warn">
+        Development only, and refused outright when <code>NODE_ENV=production</code>.
+        These make the till <em>look</em> broken so the kiosk's recovery behaviour
+        can be demonstrated live. They do not simulate a real card payment.
+      </div>
+      <div class="row">
+        <div>
+          <label for="faultOffline">Till unreachable</label>
+          <select id="faultOffline"><option value="false">No</option><option value="true">Yes</option></select>
+        </div>
+        <div>
+          <label for="faultSubmit">Fail on order submit</label>
+          <select id="faultSubmit"><option value="false">No</option><option value="true">Yes</option></select>
+        </div>
+        <div>
+          <label for="faultLatency">Added latency (ms)</label>
+          <input id="faultLatency" type="number" min="0" max="10000" step="100" value="0">
+        </div>
+        <div style="flex:0 0 auto"><button id="applyFaults">Apply</button></div>
+      </div>
+      <p class="muted" id="faultState" style="margin-top:12px"></p>
+    </section>
+  </div>
+</main>
+
+<script>
+/* ------------------------------------------------------------------ state */
+const API = '/demo-pos/api';
+let token = sessionStorage.getItem('posToken') || null;
+let user = null;
+let currency = 'ILS';
+let refreshTimer = null;
+
+/* ------------------------------------------------------------------ helpers */
+const $ = (id) => document.getElementById(id);
+
+/** Format integer minor units for display. Never parse money as a float. */
+function money(minor) {
+  const decimals = currency === 'JOD' ? 3 : 2;
+  const factor = 10 ** decimals;
+  const sign = minor < 0 ? '-' : '';
+  const abs = Math.abs(minor);
+  const whole = Math.floor(abs / factor);
+  const frac = String(abs - whole * factor).padStart(decimals, '0');
+  return `${sign}${whole}.${frac}`;
+}
+
+function showError(message) {
+  $('globalError').textContent = message;
+  $('globalError').classList.remove('hidden');
+  setTimeout(() => $('globalError').classList.add('hidden'), 6000);
+}
+function showOk(message) {
+  $('globalOk').textContent = message;
+  $('globalOk').classList.remove('hidden');
+  setTimeout(() => $('globalOk').classList.add('hidden'), 3500);
+}
+
+async function call(method, path, body) {
+  const response = await fetch(API + path, {
+    method,
+    headers: {
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...(token ? { Authorization: 'Bearer ' + token } : {}),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const text = await response.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+  if (response.status === 401 && token) { signOut('Your till session expired. Please sign in again.'); }
+  if (!response.ok) {
+    const error = new Error(data?.error?.message || `Request failed (${response.status})`);
+    error.code = data?.error?.code;
+    throw error;
+  }
+  return data;
+}
+
+/* ------------------------------------------------------------------- auth */
+$('loginForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  $('loginError').classList.add('hidden');
+  try {
+    const result = await call('POST', '/auth/login', {
+      username: $('username').value,
+      password: $('password').value,
+    });
+    token = result.accessToken;
+    user = result.user;
+    sessionStorage.setItem('posToken', token);
+    await enterApp();
+  } catch (error) {
+    $('loginError').textContent = error.message;
+    $('loginError').classList.remove('hidden');
+  }
+});
+
+$('logout').addEventListener('click', async () => {
+  try { await call('POST', '/auth/logout'); } catch { /* signing out regardless */ }
+  signOut();
+});
+
+function signOut(message) {
+  token = null; user = null;
+  sessionStorage.removeItem('posToken');
+  if (refreshTimer) clearInterval(refreshTimer);
+  $('appView').classList.add('hidden');
+  $('loginView').classList.remove('hidden');
+  $('logout').classList.add('hidden');
+  $('whoami').textContent = '';
+  if (message) { $('loginError').textContent = message; $('loginError').classList.remove('hidden'); }
+}
+
+async function enterApp() {
+  $('loginView').classList.add('hidden');
+  $('appView').classList.remove('hidden');
+  $('logout').classList.remove('hidden');
+  $('whoami').textContent = `${user.username} (${user.role})`;
+
+  // A barista has no business in the catalog, the audit log or demo controls.
+  const managerOnly = ['catalog', 'audit', 'demo'];
+  for (const button of document.querySelectorAll('.tabs button')) {
+    button.classList.toggle('hidden', managerOnly.includes(button.dataset.tab) && user.role !== 'manager');
+  }
+
+  try {
+    const config = await call('GET', '/config');
+    currency = config.currency;
+  } catch { /* keep the default */ }
+
+  selectTab('kitchen');
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => {
+    if (currentTab === 'kitchen') loadKitchen();
+  }, 5000);
+}
+
+/* ------------------------------------------------------------------- tabs */
+let currentTab = 'kitchen';
+for (const button of document.querySelectorAll('.tabs button')) {
+  button.addEventListener('click', () => selectTab(button.dataset.tab));
+}
+function selectTab(name) {
+  currentTab = name;
+  for (const button of document.querySelectorAll('.tabs button')) {
+    button.setAttribute('aria-selected', String(button.dataset.tab === name));
+  }
+  for (const tab of ['kitchen', 'catalog', 'audit', 'demo']) {
+    $('tab-' + tab).classList.toggle('hidden', tab !== name);
+  }
+  if (name === 'kitchen') loadKitchen();
+  if (name === 'catalog') loadCatalog();
+  if (name === 'audit') loadAudit();
+  if (name === 'demo') loadFaults();
+}
+
+/* ---------------------------------------------------------------- kitchen */
+const NEXT_STATUS = { queued: 'preparing', preparing: 'ready', ready: 'served' };
+const STATUS_LABEL = { queued: 'Start preparing', preparing: 'Mark ready', ready: 'Hand over' };
+
+async function loadKitchen() {
+  try {
+    const { orders } = await call('GET', '/kitchen/queue');
+    $('queueCount').textContent = `${orders.length} waiting`;
+    $('kitchenEmpty').classList.toggle('hidden', orders.length > 0);
+    $('queueList').innerHTML = orders.map(renderOrder).join('');
+    for (const button of $('queueList').querySelectorAll('[data-advance]')) {
+      button.addEventListener('click', () => advance(button.dataset.advance, button.dataset.to));
+    }
+    for (const button of $('queueList').querySelectorAll('[data-paid]')) {
+      button.addEventListener('click', () => recordCash(button.dataset.paid, Number(button.dataset.amount)));
+    }
+  } catch (error) { showError(error.message); }
+}
+
+function renderOrder(order) {
+  const paid = order.paymentStatus === 'paid';
+  const next = NEXT_STATUS[order.kitchenStatus];
+  return `
+    <div class="card" style="margin-bottom:12px; background:#17140f">
+      <div class="row" style="align-items:baseline">
+        <div style="flex:0 0 auto; font-size:22px; font-weight:700">#${escapeHtml(order.posOrderNumber)}</div>
+        <div style="flex:1">
+          <span class="pill">${escapeHtml(order.fulfillment === 'dine_in' ? 'Dine in' : 'Takeaway')}</span>
+          <span class="pill ${paid ? 'ok' : 'warn'}">${paid ? 'Paid' : 'Unpaid'}</span>
+          <span class="pill">${escapeHtml(order.kitchenStatus)}</span>
+          ${order.tableNumber ? `<span class="pill">Table ${escapeHtml(order.tableNumber)}</span>` : ''}
+        </div>
+        <div style="flex:0 0 auto; font-size:18px; font-variant-numeric:tabular-nums">
+          ${money(order.totalMinor)} ${escapeHtml(order.currency)}
+        </div>
+      </div>
+      <table style="margin-top:10px">
+        <tbody>
+          ${order.items.map((item) => `
+            <tr>
+              <td style="width:40px" class="num">${item.quantity}&times;</td>
+              <td>
+                ${escapeHtml(item.nameEn)}
+                ${item.modifiers.length ? `<div class="mods">${item.modifiers.map((m) => escapeHtml(m.nameEn)).join(' &middot; ')}</div>` : ''}
+                ${item.notes ? `<div class="mods">Note: ${escapeHtml(item.notes)}</div>` : ''}
+              </td>
+              <td class="num">${money(item.lineTotalMinor)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      <div class="row" style="margin-top:12px">
+        ${next ? `<button class="small" data-advance="${escapeHtml(order.posOrderId)}" data-to="${escapeHtml(next)}">${STATUS_LABEL[order.kitchenStatus]}</button>` : ''}
+        ${!paid ? `<button class="small ghost" data-paid="${escapeHtml(order.posOrderId)}" data-amount="${order.totalMinor}">Record cash received</button>` : ''}
+      </div>
+    </div>`;
+}
+
+async function advance(orderId, to) {
+  try {
+    await call('PATCH', `/orders/${encodeURIComponent(orderId)}/kitchen-status`, { kitchenStatus: to });
+    showOk(`Order moved to ${to}.`);
+    loadKitchen();
+  } catch (error) { showError(error.message); }
+}
+
+async function recordCash(orderId, amountMinor) {
+  // Deliberately explicit: a member of staff is confirming they have the money.
+  if (!confirm(`Confirm you have received ${money(amountMinor)} ${currency} in cash for this order.`)) return;
+  try {
+    await call('POST', `/orders/${encodeURIComponent(orderId)}/payments`, {
+      method: 'cash_counter', status: 'approved', amountMinor,
+      reference: 'COUNTER-' + Date.now(),
+    });
+    showOk('Payment recorded.');
+    loadKitchen();
+  } catch (error) { showError(error.message); }
+}
+
+/* ---------------------------------------------------------------- catalog */
+async function loadCatalog() {
+  try {
+    const data = await call('GET', '/products');
+    currency = data.currency;
+    $('menuVersion').textContent = 'version ' + data.menuVersion.slice(0, 8);
+    $('productRows').innerHTML = data.products.map((product) => `
+      <tr>
+        <td>${escapeHtml(product.nameEn)}<div class="mods">${escapeHtml(product.nameAr)}</div></td>
+        <td><code>${escapeHtml(product.posProductId)}</code></td>
+        <td class="num" style="width:130px">
+          <input data-price="${escapeHtml(product.posProductId)}" value="${money(product.priceMinor)}" inputmode="decimal" style="text-align:right">
+        </td>
+        <td style="width:120px">
+          <select data-available="${escapeHtml(product.posProductId)}">
+            <option value="true" ${product.available ? 'selected' : ''}>In stock</option>
+            <option value="false" ${product.available ? '' : 'selected'}>Sold out</option>
+          </select>
+        </td>
+        <td style="width:90px"><button class="small" data-save="${escapeHtml(product.posProductId)}">Save</button></td>
+      </tr>`).join('');
+    for (const button of $('productRows').querySelectorAll('[data-save]')) {
+      button.addEventListener('click', () => saveProduct(button.dataset.save));
+    }
+  } catch (error) { showError(error.message); }
+}
+
+async function saveProduct(productId) {
+  // CSS.escape, not raw interpolation: an ID containing a quote would
+  // otherwise produce an invalid selector that throws.
+  const key = CSS.escape(productId);
+  const price = document.querySelector(`[data-price="${key}"]`).value.trim();
+  const available = document.querySelector(`[data-available="${key}"]`).value === 'true';
+  try {
+    // The price is sent as a string and parsed exactly on the server. Parsing
+    // it here with parseFloat would reintroduce float money.
+    await call('PATCH', `/products/${encodeURIComponent(productId)}`, { price, available });
+    showOk(`${productId} updated. The kiosk will show it within 30 seconds.`);
+    loadCatalog();
+  } catch (error) { showError(error.message); }
+}
+
+/* ------------------------------------------------------------------ audit */
+async function loadAudit() {
+  try {
+    const { events } = await call('GET', '/audit?limit=60');
+    $('auditRows').innerHTML = events.map((event) => `
+      <tr>
+        <td class="mods">${escapeHtml(new Date(event.createdAt).toLocaleString())}</td>
+        <td>${escapeHtml(event.actorType)}</td>
+        <td><code>${escapeHtml(event.eventType)}</code></td>
+        <td class="mods">${escapeHtml(event.entityId || '—')}</td>
+        <td class="mods">${escapeHtml(summarise(event.payload))}</td>
+      </tr>`).join('');
+  } catch (error) { showError(error.message); }
+}
+
+function summarise(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+  const parts = [];
+  if (payload.fromMinor !== undefined) parts.push(`${money(payload.fromMinor)} → ${money(payload.toMinor)}`);
+  if (payload.from !== undefined && payload.fromMinor === undefined) parts.push(`${payload.from} → ${payload.to}`);
+  if (payload.orderNumber) parts.push('order #' + payload.orderNumber);
+  if (payload.totalMinor !== undefined) parts.push(money(payload.totalMinor));
+  return parts.join(' · ') || Object.keys(payload).slice(0, 3).join(', ');
+}
+
+/* ------------------------------------------------------------ demo faults */
+async function loadFaults() {
+  $('faultState').textContent = 'Apply a change to see the current state.';
+}
+
+$('applyFaults').addEventListener('click', async () => {
+  try {
+    const result = await call('POST', '/demo/faults', {
+      offline: $('faultOffline').value === 'true',
+      failOnSubmit: $('faultSubmit').value === 'true',
+      latencyMs: Number($('faultLatency').value) || 0,
+    });
+    $('faultState').textContent = 'Active faults: ' + JSON.stringify(result.faults);
+    showOk('Demo faults applied.');
+  } catch (error) { showError(error.message); }
+});
+
+/* ----------------------------------------------------------------- escape */
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+/* ------------------------------------------------------------------- boot */
+(async function boot() {
+  if (!token) return;
+  try {
+    const me = await call('GET', '/auth/me');
+    user = me.user;
+    await enterApp();
+  } catch {
+    signOut();
+  }
+})();
+</script>
+</body>
+</html>

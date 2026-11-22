@@ -1,6 +1,126 @@
-# Bean & Bloom — Coffee Ordering Kiosk (Version 3)
+# Coffee Ordering Kiosk — Bean & Bloom
 
-A responsive self-service coffee kiosk for **Windows touchscreen devices**. Built with React/Vite, Express and a persistent **SQLite** database. It includes six local coffee images and English/Arabic support.
+A self-service coffee ordering kiosk for a **Windows 10-inch touchscreen**,
+built as an in-house proof of concept to show prospective coffee-shop clients
+in Palestine. It runs with no physical POS, card reader or printer by using a
+Demo POS and simulators.
+
+**Core rule:** the client's POS is the source of truth for menu, prices,
+availability, taxes and order records. The kiosk is a new *ordering channel*,
+not a replacement POS. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+---
+
+## Two applications in this repository
+
+| | Version 3 app | Phase 1 platform |
+|---|---|---|
+| **What** | The working customer prototype | Demo POS + standard kiosk API |
+| **Start** | `npm run dev` | `npm run dev:platform` |
+| **Ports** | 5173 (UI), 3001 (API) | 4001 |
+| **Database** | `coffee-kiosk.sqlite` | `demo-pos.sqlite` + `kiosk.sqlite` |
+| **Status** | Works; still the customer UI | Backend complete and tested; UI rewiring is Phase 2 |
+
+Both run side by side. Phase 1 added the architecture the project needs without
+breaking what already worked; Phase 2 moves the React UI onto the new API.
+
+```bash
+npm install
+npm run dev:all       # vite + V3 API + Phase 1 platform together
+npm test              # 168 tests
+```
+
+| What | URL |
+|---|---|
+| Customer kiosk (Version 3 UI) | http://localhost:5173 |
+| **Demo POS staff console** | http://localhost:4001/demo-pos/ |
+| Kiosk menu API | http://localhost:4001/api/kiosk/menu |
+| Kiosk health | http://localhost:4001/api/kiosk/health |
+| Ops exceptions (manager auth) | http://localhost:4001/api/ops/exceptions |
+
+### Set passwords before first run
+
+Without these, development builds create till accounts with **known default
+passwords** and warn loudly on every boot. The app refuses to start in
+production without them.
+
+```powershell
+$env:POS_MANAGER_PASSWORD = "choose-something-long"
+$env:POS_BARISTA_PASSWORD = "choose-something-else"
+$env:STAFF_PIN = "654321"          # Version 3 app only
+```
+
+See [`.env.example`](.env.example).
+
+---
+
+## Feature status
+
+Honest status. "Tested" means an automated test or a recorded run proves it.
+
+### Working and tested
+
+| Feature | Notes |
+|---|---|
+| Demo POS as a separate database and application | Catalog, modifiers with min/max, VAT-inclusive prices, gift cards, promotions, orders, payments, staff, audit |
+| POS adapter seam | One class to replace for a real client POS |
+| Standard kiosk API | The React UI's only entry point; cannot change a price |
+| 30-second menu sync | With stale, offline and retry indicators |
+| Server-side pricing | Three independent checks; a browser cannot set a total |
+| Idempotent orders | Duplicate POST returns the original; UNIQUE on both sides |
+| Durable retry queue | Survives `SIGKILL`; a paid order is never abandoned |
+| Ops exceptions | Approved payment with no order reaches a human |
+| VAT-inclusive money in integer minor units | ILS default; VAT extracted, never added |
+| Role-gated staff console | Manager vs barista, with an audit trail |
+| Staff sessions surviving restart | Version 3 logged everyone out on restart |
+| Non-destructive V3 import | Read-only source, timestamped backup, idempotent |
+| Bloom Rewards data | Preserved and imported; adapter is Phase 2 |
+
+### Deliberately not built yet
+
+| Feature | Phase |
+|---|---|
+| Customer UI on the new API; full bilingual flow, modifiers, upsell, timeout, responsive 10"/27" | 2 |
+| Payment simulator state machine, gift-card split payment, cash-at-counter flow | 3 |
+| Printer adapter, 80 mm receipts, local device service, QR digital receipts | 4 |
+| Config console, branding, multi-tenant isolation | 5 |
+| Windows kiosk lockdown, provisioning, fleet console, offline policy | 6 |
+| Security hardening, end-to-end tests, provider checklists | 7 |
+
+### Blocked on things we do not have
+
+| Blocker | Needs |
+|---|---|
+| Arab Bank / Bank of Palestine terminals | Vendor SDK, unattended certification, test hardware |
+| Zebra receipt printer | Model, Windows driver, Arabic glyph confirmation |
+| SMS / WhatsApp / email receipts | A contracted provider and a consent model |
+| Real client POS | Endpoint docs, credentials, item/modifier ID export |
+
+These stay explicit adapters with documented stubs. **Nothing simulated is
+described as working.** No real card is ever charged by this software, and no
+card number, CVV, PIN or track data enters or is stored by it.
+
+---
+
+## Documentation
+
+| Document | Covers |
+|---|---|
+| [`DEVELOPMENT_PLAN.md`](DEVELOPMENT_PLAN.md) | Phases, status, acceptance criteria, blockers |
+| [`IMPLEMENTATION_LOG.md`](IMPLEMENTATION_LOG.md) | What changed, decisions, defects found, test output |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | The POS-is-truth rule and how it is enforced |
+| [`docs/API.md`](docs/API.md) · [`openapi.yaml`](openapi.yaml) | Endpoint reference and machine-readable spec |
+| [`docs/DATABASE.md`](docs/DATABASE.md) | All three databases, migrations, read-only queries |
+| [`docs/TESTING.md`](docs/TESTING.md) | How to run tests, what is covered, **what is not** |
+| [`docs/WINDOWS_KIOSK_SETUP.md`](docs/WINDOWS_KIOSK_SETUP.md) | Windows setup; kiosk lockdown is Phase 6 |
+| [`DATABASE.md`](DATABASE.md) · [`LOYALTY_API_GUIDE.md`](LOYALTY_API_GUIDE.md) | Version 3 reference, still accurate for that app |
+
+---
+
+# Version 3 app
+
+Everything below documents the Version 3 application, which still runs
+unchanged via `npm run dev`.
 
 ## Features
 

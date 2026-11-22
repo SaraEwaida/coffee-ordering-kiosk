@@ -1,0 +1,783 @@
+openapi: 3.0.3
+info:
+  title: Bean & Bloom Kiosk Platform
+  version: 4.0.0-phase1
+  description: |
+    Two namespaces on one server.
+
+    * `/api/kiosk/*` — the customer kiosk UI. No authentication, and read-only
+      over the catalog: no route here can change a price or stock level.
+    * `/demo-pos/api/*` — the shop's till. Bearer token, role-gated. Stands in
+      for the client's real POS during the proof of concept.
+
+    **Money.** Every field ending in `Minor` is an INTEGER count of minor
+    currency units (agorot for ILS); `2650` means 26.50 ILS. Prices are
+    VAT-inclusive, and `vatIncludedMinor` is the VAT *contained in* the total,
+    never an addition to it. No monetary value is ever a float.
+
+    **Idempotency.** `POST /api/kiosk/orders` is idempotent on
+    `clientRequestId`. Generate one stable value per checkout attempt and reuse
+    it for every retry; a duplicate returns the original order.
+servers:
+  - url: http://localhost:4001
+    description: Local development
+
+tags:
+  - name: kiosk
+    description: Customer kiosk. Unauthenticated, read-only over the catalog.
+  - name: demo-pos
+    description: The shop's till. Authenticated and role-gated.
+  - name: ops
+    description: Operator diagnostics. Manager role required.
+
+paths:
+  /api/health:
+    get:
+      tags: [kiosk]
+      summary: Liveness
+      responses:
+        '200':
+          description: The platform is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  service: { type: string }
+                  storeId: { type: string }
+
+  /api/kiosk/config:
+    get:
+      tags: [kiosk]
+      summary: Store settings the kiosk UI needs
+      responses:
+        '200':
+          description: Store configuration
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskConfig' }
+
+  /api/kiosk/menu:
+    get:
+      tags: [kiosk]
+      summary: The menu to render, with freshness metadata
+      description: |
+        Returns 200 when a cached menu exists, 503 when there has never been a
+        successful sync. On 503 the UI must show a "cannot reach the till"
+        screen, not an empty menu — an empty menu looks like a shop with
+        nothing to sell.
+
+        `priceMinor` and `available` come from the POS and cannot be overridden
+        by kiosk content. Check `sync.stale`: past 120 seconds the UI must show
+        a stale indicator rather than presenting old prices as current.
+      responses:
+        '200':
+          description: Menu available
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskMenu' }
+        '503':
+          description: No menu has ever been synced
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KioskMenu' }
+
+  /api/kiosk/menu/sync:
+    post:
+      tags: [kiosk]
+      summary: Force a menu sync
+      description: Useful in a demo to make a price change land immediately.
+      responses:
+        '200': { description: Sync succeeded }
+        '503': { description: The POS could not be reached }
+
+  /api/kiosk/quotes:
+    post:
+      tags: [kiosk]
+      summary: Price a cart
+      description: |
+        The POS prices the cart. The result is stored server-side and only an
+        opaque `quoteId` is returned, so the browser never holds a figure that
+        anything trusts. `posProductId` accepts a POS product ID or a mapped
+        kiosk-local key; an unmapped reference returns `mapping_missing` and is
+        logged as an integration problem rather than guessed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cart]
+              properties:
+                kioskId: { type: string, example: kiosk-01 }
+                cart: { $ref: '#/components/schemas/Cart' }
+      responses:
+        '201':
+          description: Quote created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  quoteId: { type: string, format: uuid }
+                  expiresAt: { type: string, format: date-time }
+                  quote: { $ref: '#/components/schemas/Quote' }
+        '409':
+          description: Item sold out, modifier rules unmet, or item not mapped
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: The till is not responding
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/kiosk/quotes/{id}:
+    get:
+      tags: [kiosk]
+      summary: Re-read a stored quote
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Quote and its status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  quoteId: { type: string }
+                  status: { type: string, enum: [open, consumed, expired, invalidated] }
+                  expiresAt: { type: string, format: date-time }
+                  quote: { $ref: '#/components/schemas/Quote' }
+        '404': { description: Not found }
+
+  /api/kiosk/orders:
+    post:
+      tags: [kiosk]
+      summary: Submit an order (idempotent)
+      description: |
+        A durable row is written before the POS is called, keyed on
+        `clientRequestId` with a UNIQUE constraint, so a crash between write and
+        confirm leaves a pending row the retry queue picks up.
+
+        **201** means the till has the order. **202** means it is saved and
+        queued but unconfirmed — the UI must not show success on a 202. When a
+        202 carries `paymentAccepted: true`, show the returned `message`
+        verbatim: it tells the customer their money moved and to speak to staff.
+
+        If `payment` is present with `status: approved`, `amountMinor` must equal
+        the order total exactly or the order is refused outright.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientRequestId, quoteId]
+              properties:
+                clientRequestId:
+                  type: string
+                  pattern: '^[\w-]{8,100}$'
+                  description: Stable per checkout attempt; reuse on every retry.
+                  example: kiosk01-1795342620-a7f3
+                quoteId: { type: string, format: uuid }
+                kioskId: { type: string }
+                notes: { type: string, maxLength: 500 }
+                payment: { $ref: '#/components/schemas/PaymentOutcome' }
+      responses:
+        '201':
+          description: The till has the order
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderConfirmed' }
+        '202':
+          description: Saved and queued; the till has not confirmed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderPending' }
+        '409':
+          description: |
+            Refused. Notable codes: `menu_changed`, `conflict` (quote already
+            used), `payment_amount_mismatch`, and
+            `payment_taken_order_failed` — money moved but no order exists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: Missing or malformed clientRequestId
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/kiosk/orders/by-request/{clientRequestId}:
+    get:
+      tags: [kiosk]
+      summary: Poll a submission after a 202
+      parameters:
+        - { name: clientRequestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Submission status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clientRequestId: { type: string }
+                  status: { type: string, enum: [confirmed, pending, failed, abandoned] }
+                  posOrderNumber: { type: string, nullable: true }
+                  attempts: { type: integer }
+                  nextAttemptAt: { type: string, nullable: true }
+                  paymentAccepted: { type: boolean }
+        '404': { description: No submission for that reference }
+
+  /api/kiosk/orders/{posOrderId}/status:
+    get:
+      tags: [kiosk]
+      summary: Order and kitchen status
+      parameters:
+        - { name: posOrderId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Status }
+        '404': { description: Not found }
+
+  /api/kiosk/promotions/{code}:
+    get:
+      tags: [kiosk]
+      summary: Validate a promotion code
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Valid }
+        '404': { description: Not valid }
+
+  /api/kiosk/gift-cards/{code}:
+    get:
+      tags: [kiosk]
+      summary: Validate a gift card
+      description: The code is a bearer credential; responses mask it to the last four characters.
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Valid, with balance }
+        '404': { description: Not found }
+
+  /api/kiosk/health:
+    get:
+      tags: [kiosk]
+      summary: Kiosk and integration health
+      responses:
+        '200': { description: Healthy }
+        '503': { description: POS unreachable or ops exceptions outstanding }
+
+  /api/ops/exceptions:
+    get:
+      tags: [ops]
+      summary: Everything needing a human
+      description: |
+        Submissions where payment was accepted but no POS order exists, plus
+        integration issues. Manager role required: this lists payment references
+        for orders where a customer's money moved.
+      security: [{ posBearer: [] }]
+      responses:
+        '200': { description: Exceptions and integration issues }
+        '401': { description: Authentication required }
+        '403': { description: Manager role required }
+
+  /demo-pos/api/auth/login:
+    post:
+      tags: [demo-pos]
+      summary: Till sign-in
+      description: |
+        A wrong username and a wrong password return the same message, so
+        usernames cannot be enumerated. Rate limited to 8 attempts per 10
+        minutes per IP. Sessions are stored in SQLite and survive a restart.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+                  expiresAt: { type: string, format: date-time }
+                  user: { $ref: '#/components/schemas/PosUser' }
+        '401': { description: Incorrect username or password }
+        '429': { description: Too many attempts }
+
+  /demo-pos/api/auth/logout:
+    post:
+      tags: [demo-pos]
+      summary: End the session
+      security: [{ posBearer: [] }]
+      responses:
+        '200': { description: Signed out }
+
+  /demo-pos/api/auth/me:
+    get:
+      tags: [demo-pos]
+      summary: Current user
+      security: [{ posBearer: [] }]
+      responses:
+        '200': { description: The signed-in user }
+        '401': { description: Authentication required }
+
+  /demo-pos/api/products:
+    get:
+      tags: [demo-pos]
+      summary: Catalog with POS IDs and VAT-inclusive prices
+      security: [{ posBearer: [] }]
+      responses:
+        '200': { description: Products }
+        '401': { description: Authentication required }
+
+  /demo-pos/api/products/{id}:
+    patch:
+      tags: [demo-pos]
+      summary: Change a price, stock flag or menu detail
+      description: |
+        Manager role only. `price` is a decimal **string** parsed exactly
+        server-side, so "15.05" becomes 1505 agorot; a float `priceMinor` is
+        rejected. The kiosk reflects the change within 30 seconds.
+      security: [{ posBearer: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string }, example: PRD-1003 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                price: { type: string, example: '18.50', description: Decimal string. Parsed exactly. }
+                priceMinor: { type: integer, example: 1850 }
+                available: { type: boolean }
+                nameEn: { type: string }
+                nameAr: { type: string }
+                descriptionEn: { type: string }
+                descriptionAr: { type: string }
+                taxRateBp: { type: integer, example: 1600 }
+      responses:
+        '200': { description: Updated }
+        '400': { description: Nothing to update, or an invalid value }
+        '403': { description: Manager role required }
+        '422': { description: Validation failed }
+
+  /demo-pos/api/modifiers/{id}:
+    patch:
+      tags: [demo-pos]
+      summary: Change a modifier price or availability
+      security: [{ posBearer: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Updated }
+        '403': { description: Manager role required }
+
+  /demo-pos/api/config:
+    get:
+      tags: [demo-pos]
+      summary: Store configuration
+      security: [{ posBearer: [] }]
+      responses:
+        '200': { description: Configuration }
+    patch:
+      tags: [demo-pos]
+      summary: Change store configuration
+      description: |
+        Manager role only. Currency is deliberately not changeable here:
+        changing it would make every stored price mean something different
+        without converting any of them. That needs a migration, not a toggle.
+      security: [{ posBearer: [] }]
+      responses:
+        '200': { description: Updated }
+        '400': { description: No allowed key supplied }
+        '403': { description: Manager role required }
+
+  /demo-pos/api/kitchen/queue:
+    get:
+      tags: [demo-pos]
+      summary: What still has to be made
+      description: Imported Version 3 history is excluded — it is history, not work in progress.
+      security: [{ posBearer: [] }]
+      responses:
+        '200': { description: Queue }
+        '401': { description: Authentication required }
+
+  /demo-pos/api/orders:
+    get:
+      tags: [demo-pos]
+      summary: Orders, newest first
+      security: [{ posBearer: [] }]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 200 } }
+        - { name: kitchenStatus, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Orders }
+
+  /demo-pos/api/orders/{id}:
+    get:
+      tags: [demo-pos]
+      summary: One order with items and modifiers
+      security: [{ posBearer: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Order }
+        '404': { description: Not found }
+
+  /demo-pos/api/orders/{id}/kitchen-status:
+    patch:
+      tags: [demo-pos]
+      summary: Advance the kitchen status
+      description: Cancelling a paid order is refused (`refund_required`) — money must not disappear via a status flip.
+      security: [{ posBearer: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kitchenStatus]
+              properties:
+                kitchenStatus: { type: string, enum: [queued, preparing, ready, served, cancelled] }
+      responses:
+        '200': { description: Updated }
+        '400': { description: Invalid status, order cancelled, or refund required }
+        '403': { description: Insufficient role }
+
+  /demo-pos/api/orders/{id}/payments:
+    post:
+      tags: [demo-pos]
+      summary: Record money a member of staff has seen
+      description: |
+        Nothing in the customer kiosk can mark an order paid. An approved amount
+        must equal the order total; replaying the same `reference` returns
+        `duplicate: true` without double-counting revenue.
+      security: [{ posBearer: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentOutcome' }
+      responses:
+        '200': { description: Recorded }
+        '400': { description: Amount mismatch or invalid state }
+        '403': { description: Insufficient role }
+
+  /demo-pos/api/gift-cards/{code}:
+    get:
+      tags: [demo-pos]
+      summary: Gift-card balance, code masked
+      security: [{ posBearer: [] }]
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Balance }
+        '404': { description: Not found }
+        '429': { description: Too many lookups }
+
+  /demo-pos/api/audit:
+    get:
+      tags: [demo-pos]
+      summary: Audit log
+      security: [{ posBearer: [] }]
+      responses:
+        '200': { description: Events }
+        '403': { description: Manager role required }
+
+  /demo-pos/api/demo/faults:
+    post:
+      tags: [demo-pos]
+      summary: Development fault injection
+      description: |
+        Makes the till *look* unreachable so the kiosk's recovery behaviour can
+        be demonstrated live. **Does not simulate a card payment.** Manager role
+        only, and refused outright when `NODE_ENV=production`.
+      security: [{ posBearer: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                offline: { type: boolean }
+                failOnSubmit: { type: boolean }
+                latencyMs: { type: integer, minimum: 0, maximum: 10000 }
+      responses:
+        '200': { description: Faults applied }
+        '403': { description: Manager role required, or production }
+
+  /demo-pos/api/health:
+    get:
+      tags: [demo-pos]
+      summary: Till health
+      responses:
+        '200': { description: Healthy }
+        '503': { description: Unhealthy }
+
+components:
+  securitySchemes:
+    posBearer:
+      type: http
+      scheme: bearer
+      description: Token from `POST /demo-pos/api/auth/login`.
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable, safe to switch on.
+              example: item_unavailable
+            message:
+              type: string
+              description: Safe to show a customer.
+              example: Caffè Latte is sold out.
+            details: { type: object, additionalProperties: true }
+            requestId: { type: string }
+
+    KioskConfig:
+      type: object
+      properties:
+        storeId: { type: string }
+        nameEn: { type: string }
+        nameAr: { type: string }
+        currency: { type: string, example: ILS }
+        defaultLocale: { type: string, enum: [en, ar] }
+        dineInEnabled: { type: boolean }
+        tableNumberEnabled: { type: boolean }
+        surcharge:
+          type: object
+          description: For display. The figure is still verified by the POS at quote time.
+          properties:
+            kind: { type: string, enum: [none, fixed, percent] }
+            value: { type: integer }
+            labelEn: { type: string }
+            labelAr: { type: string }
+        inactivityTimeoutSeconds: { type: integer, example: 60 }
+        menuSyncIntervalSeconds: { type: integer, example: 30 }
+
+    Modifier:
+      type: object
+      properties:
+        modifierId: { type: string, example: MOD-SIZE-M }
+        groupId: { type: string, example: GRP-SIZE }
+        nameEn: { type: string }
+        nameAr: { type: string }
+        priceDeltaMinor:
+          type: integer
+          description: May be negative; a line total can never fall below zero.
+          example: 300
+        available: { type: boolean }
+
+    ModifierGroup:
+      type: object
+      properties:
+        groupId: { type: string }
+        nameEn: { type: string }
+        nameAr: { type: string }
+        minSelect: { type: integer, description: 0 means optional. }
+        maxSelect: { type: integer }
+        required: { type: boolean }
+        modifiers:
+          type: array
+          items: { $ref: '#/components/schemas/Modifier' }
+
+    Product:
+      type: object
+      properties:
+        posProductId: { type: string, example: PRD-1003 }
+        sku: { type: string }
+        categoryId: { type: string }
+        nameEn: { type: string }
+        nameAr: { type: string }
+        descriptionEn: { type: string, description: May come from a kiosk overlay. }
+        descriptionAr: { type: string }
+        priceMinor:
+          type: integer
+          description: VAT-inclusive, in minor units. From the POS; not overridable.
+          example: 1600
+        taxRateBp: { type: integer, example: 1600 }
+        available: { type: boolean, description: From the POS; not overridable. }
+        imageUrl: { type: string, description: Kiosk presentation only. }
+        allergensEn: { type: string, nullable: true }
+        allergensAr: { type: string, nullable: true }
+        calories: { type: integer, nullable: true }
+        modifierGroups:
+          type: array
+          items: { $ref: '#/components/schemas/ModifierGroup' }
+
+    KioskMenu:
+      type: object
+      properties:
+        available: { type: boolean }
+        reason: { type: string, nullable: true, example: no_menu_yet }
+        currency: { type: string }
+        menuVersion:
+          type: string
+          description: Changes on any catalog, price, stock or modifier change.
+        categories:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              nameEn: { type: string }
+              nameAr: { type: string }
+              displayOrder: { type: integer }
+        products:
+          type: array
+          items: { $ref: '#/components/schemas/Product' }
+        sync:
+          type: object
+          properties:
+            syncedAt: { type: string, format: date-time, nullable: true }
+            ageSeconds: { type: integer, nullable: true }
+            stale: { type: boolean, description: True past 120 s. Show an indicator. }
+            healthy: { type: boolean }
+            consecutiveFailures: { type: integer }
+            errorRate: { type: number }
+            lastLatencyMs: { type: integer, nullable: true }
+            intervalSeconds: { type: integer }
+
+    CartLine:
+      type: object
+      required: [posProductId, quantity]
+      properties:
+        posProductId:
+          type: string
+          description: A POS product ID, or a mapped kiosk-local key.
+          example: PRD-1003
+        quantity: { type: integer, minimum: 1, maximum: 20 }
+        modifierIds:
+          type: array
+          items: { type: string }
+          example: [MOD-SIZE-L, MOD-MILK-OAT, MOD-SUG-1]
+        notes: { type: string, maxLength: 200 }
+
+    Cart:
+      type: object
+      required: [fulfillment, lines]
+      properties:
+        fulfillment: { type: string, enum: [dine_in, takeaway] }
+        tableNumber: { type: string, nullable: true }
+        promotionCode: { type: string, nullable: true }
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 30
+          items: { $ref: '#/components/schemas/CartLine' }
+
+    QuoteLine:
+      type: object
+      properties:
+        posProductId: { type: string }
+        nameEn: { type: string }
+        nameAr: { type: string }
+        quantity: { type: integer }
+        basePriceMinor: { type: integer }
+        unitPriceMinor: { type: integer, description: Base plus modifier deltas. }
+        lineTotalMinor: { type: integer }
+        taxRateBp: { type: integer }
+        discountShareMinor:
+          type: integer
+          description: This line's share of any basket discount. Shares sum exactly to discountMinor.
+        vatIncludedMinor: { type: integer }
+        modifiers:
+          type: array
+          items: { $ref: '#/components/schemas/Modifier' }
+
+    Quote:
+      type: object
+      properties:
+        currency: { type: string }
+        menuVersion: { type: string }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/QuoteLine' }
+        itemsSubtotalMinor: { type: integer }
+        discountMinor: { type: integer }
+        promotionCode: { type: string, nullable: true }
+        surchargeMinor: { type: integer }
+        surchargeLabelEn: { type: string }
+        surchargeLabelAr: { type: string }
+        totalMinor: { type: integer, description: The only total that may be charged. }
+        vatIncludedMinor: { type: integer, description: VAT contained in totalMinor, not added to it. }
+        taxNoteEn: { type: string }
+        taxNoteAr: { type: string }
+        fulfillment: { type: string, enum: [dine_in, takeaway] }
+        tableNumber: { type: string, nullable: true }
+
+    PaymentOutcome:
+      type: object
+      required: [method, status, amountMinor]
+      description: |
+        A payment result from a payment adapter. No raw card data ever appears
+        here or in the database — no PAN, CVV, PIN or track data.
+      properties:
+        method: { type: string, enum: [card_simulated, cash_counter, gift_card] }
+        status: { type: string, enum: [pending, approved, declined, cancelled, timed_out, failed, voided] }
+        amountMinor:
+          type: integer
+          description: When approved, must equal the order total exactly.
+        reference: { type: string, nullable: true, description: Adapter reference. Idempotency key for replays. }
+        maskedDetail: { type: string, nullable: true, example: 'Visa ••••4417' }
+
+    OrderConfirmed:
+      type: object
+      properties:
+        status: { type: string, enum: [confirmed] }
+        duplicate: { type: boolean, description: True when idempotency returned the original order. }
+        posOrderId: { type: string }
+        posOrderNumber: { type: string, description: The number to show the customer. }
+        order: { type: object, additionalProperties: true }
+
+    OrderPending:
+      type: object
+      properties:
+        status: { type: string, enum: [pending] }
+        submissionId: { type: string }
+        clientRequestId: { type: string }
+        attempts: { type: integer }
+        nextAttemptAt: { type: string, nullable: true }
+        paymentAccepted: { type: boolean }
+        message:
+          type: string
+          description: Customer-facing. When paymentAccepted is true, show this verbatim.
+
+    PosUser:
+      type: object
+      properties:
+        id: { type: string }
+        username: { type: string }
+        role: { type: string, enum: [manager, barista, readonly] }

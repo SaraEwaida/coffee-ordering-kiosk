@@ -1,14 +1,26 @@
 node_modules/
 dist/
+
+# Secrets. The negation must stay AFTER the .env.* pattern it exempts,
+# or git ignores .env.example too and nobody gets the template.
 .env
 .env.*
 !.env.example
+
 .DS_Store
 .vscode/
-server/data/*.json
-server/data/*.tmp
 npm-debug.log*
+
+# Runtime databases: the Version 3 database, the Demo POS (the shop's own
+# till data) and the kiosk's cache/queue. Customer records and order history
+# never belong in version control. Migrations and seed fixtures DO — they are
+# code and are committed.
 server/data/*.sqlite
 server/data/*.sqlite-wal
 server/data/*.sqlite-shm
 server/data/*.sqlite-journal
+server/data/*.json
+server/data/*.tmp
+
+# Automatic pre-import backups of the Version 3 database.
+server/data/backups/
