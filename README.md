@@ -13,26 +13,20 @@ not a replacement POS. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Two applications in this repository
 
-| | Version 3 app | Phase 1 platform |
-|---|---|---|
-| **What** | The working customer prototype | Demo POS + standard kiosk API |
-| **Start** | `npm run dev` | `npm run dev:platform` |
-| **Ports** | 5173 (UI), 3001 (API) | 4001 |
-| **Database** | `coffee-kiosk.sqlite` | `demo-pos.sqlite` + `kiosk.sqlite` |
-| **Status** | Works; still the customer UI | Backend complete and tested; UI rewiring is Phase 2 |
-
-Both run side by side. Phase 1 added the architecture the project needs without
-breaking what already worked; Phase 2 moves the React UI onto the new API.
-
 ```bash
 npm install
-npm run dev:all       # vite + V3 API + Phase 1 platform together
-npm test              # 168 tests
+npm run dev           # vite (5173) + the kiosk platform (4001)
+npm test              # 194 tests
 ```
+
+The kiosk UI talks to the platform API on 4001. The Version 3 Express API is
+still in the repository and still runs (`npm run dev:v3-api`) for reference and
+for its data, but it no longer has screens: the React UI moved onto the new API
+in Phase 2.
 
 | What | URL |
 |---|---|
-| Customer kiosk (Version 3 UI) | http://localhost:5173 |
+| Customer kiosk | http://localhost:5173 |
 | **Demo POS staff console** | http://localhost:4001/demo-pos/ |
 | Kiosk menu API | http://localhost:4001/api/kiosk/menu |
 | Kiosk health | http://localhost:4001/api/kiosk/health |
@@ -74,13 +68,14 @@ Honest status. "Tested" means an automated test or a recorded run proves it.
 | Role-gated staff console | Manager vs barista, with an audit trail |
 | Staff sessions surviving restart | Version 3 logged everyone out on restart |
 | Non-destructive V3 import | Read-only source, timestamped backup, idempotent |
-| Bloom Rewards data | Preserved and imported; adapter is Phase 2 |
+| Bloom Rewards data | Preserved and imported; the customer-facing flow returns in Phase 2.8 |
+| Kiosk UI on the new API | Shekels, VAT-inclusive, bakery and snacks, real modifier groups, dine-in surcharge, inactivity timeout, full Arabic parity |
 
 ### Deliberately not built yet
 
 | Feature | Phase |
 |---|---|
-| Customer UI on the new API; full bilingual flow, modifiers, upsell, timeout, responsive 10"/27" | 2 |
+| Upselling, promo-code entry, table numbers, Bloom Rewards customer flow | 2 |
 | Payment simulator state machine, gift-card split payment, cash-at-counter flow | 3 |
 | Printer adapter, 80 mm receipts, local device service, QR digital receipts | 4 |
 | Config console, branding, multi-tenant isolation | 5 |
@@ -101,6 +96,17 @@ described as working.** No real card is ever charged by this software, and no
 card number, CVV, PIN or track data enters or is stored by it.
 
 ---
+
+### Removed in Phase 2, and when it comes back
+
+Moving the UI onto the new API deliberately removed three Version 3 screens.
+Say so plainly rather than let anyone discover it in a demo:
+
+| Removed | Why | Back in |
+|---|---|---|
+| Kitchen and Admin screens at `?view=kitchen` | Staff controls sat inside the customer bundle with no authentication. They are now the authenticated Demo POS console. | Already replaced |
+| QR digital receipt | Needs a receipt token on the new order model and a phone-reachable URL. | Phase 4 |
+| Bloom Rewards join/lookup | Moving behind a loyalty adapter so a client's own programme can replace ours. **No data is lost** — balances import into `pos_loyalty_*`. | Phase 2.8 |
 
 ## Documentation
 

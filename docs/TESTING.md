@@ -14,7 +14,7 @@ configured to agree.
 
 ## Current result
 
-**168 tests, 168 passing, 0 failing** — about 11 seconds.
+**194 tests, 194 passing, 0 failing** — about 11 seconds.
 
 ### Platform note
 
@@ -42,6 +42,7 @@ usually a resource-cleanup problem, not a logic one.
 | `resilience.test.js` | 14 | POS offline, retry/backoff, stranded payments, restart durability, metrics |
 | `importV3.test.js` | 13 | Read-only guarantee, backups, fidelity, idempotency |
 | `migrations.test.js` | 10 | Ordering, immutability, rollback, pragmas, schema separation |
+| `kioskUi.test.js` | 26 | ILS formatting, language fallback, modifier selection rules, the exact payload the screens send |
 
 ## The tests that matter most
 
@@ -104,10 +105,11 @@ Named honestly, because an untested area is not a finished one.
 | Gap | Phase |
 |---|---|
 | **No browser/E2E tests.** No Playwright, no UI test. The Demo POS console was verified by API calls and syntax check, not by driving it. | 7 |
-| **No React component tests.** The kiosk UI still talks to the V3 API. | 2 |
-| **No responsive/visual checks** at 10" landscape, 10" portrait, 27" portrait. | 2, 7 |
-| **No Arabic RTL rendering tests.** Arabic strings are asserted present; layout is not verified. | 2, 7 |
+| **No React component or browser tests.** The UI's pure logic is tested (formatting, modifier rules, the payload it sends) but nothing renders a component or clicks a button. | 7 |
+| **No responsive/visual checks** at 10" landscape, 10" portrait, 27" portrait. The CSS exists; nothing proves it does not overflow. | 7 |
+| **No Arabic RTL rendering tests.** All 164 keys are asserted present and distinct from English; the RTL *layout* is not verified. | 7 |
 | **No payment state-machine tests** — there is no simulator yet. | 3 |
+| **The inactivity timeout is untested.** It needs a DOM to drive events. | 7 |
 | **No concurrency test** for two kiosks submitting at the same instant. `BEGIN IMMEDIATE` plus the UNIQUE constraint should hold; it is not proven. | 7 |
 | **No load or performance measurement.** The brief's targets (touch < 100 ms, handoff < 3 s) are **unmeasured**. | 6 |
 | **No multi-tenant isolation tests** — one store is seeded. | 5 |

@@ -87,3 +87,83 @@ html[dir=rtl] .topbar{direction:rtl}html[dir=rtl] .photo-label{left:auto;right:1
 .loyalty-admin-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:15px 0 25px}.loyalty-admin-metrics>div{background:#f8f1e8;border-radius:13px;padding:18px}.loyalty-admin-metrics strong{font-size:27px;display:block}.loyalty-admin-metrics span{font-size:12px;line-height:1.4;color:#796757;display:block;margin-top:8px}
 @media(max-width:790px){.welcome-rewards-row{justify-content:center}.loyalty-admin-metrics{grid-template-columns:1fr 1fr}.rewards-member-entry{padding:12px}}
 @media(max-width:475px){.code-input-row{flex-direction:column}.code-input-row button{justify-content:center}.loyalty-admin-metrics{grid-template-columns:1fr}.rewards-wallet-card{padding:24px 19px}}
+
+/* ===================================================================
+   Phase 2 — POS-driven menu, server quotes, offline states, idle timeout
+   =================================================================== */
+
+/* Honest status banners. A customer is told when prices may be out of
+   date rather than being shown stale figures as if they were current. */
+.status-banner{display:flex;align-items:center;gap:10px;padding:13px 17px;border-radius:14px;margin-bottom:20px;font-size:14px;font-weight:650;line-height:1.45}
+.status-banner-warn{background:#fdf2dc;border:1px solid #e8cd93;color:#80602a}
+.status-banner-bad{background:#fdeee9;border:1px solid #e9b7a4;color:#8d4228}
+
+/* Food has no photo yet; a readable monogram beats an empty box. */
+.product-photo-fallback{display:grid;place-items:center;height:100%;width:100%;font-family:Outfit,sans-serif;font-size:46px;font-weight:800;color:#c0a184;background:linear-gradient(145deg,#f3e7d6,#e9d8c2);letter-spacing:1px}
+.product-photo-fallback.large{font-size:76px}
+.cart-item-fallback{width:104px;height:104px;border-radius:18px;flex-shrink:0;display:grid;place-items:center;font-family:Outfit,sans-serif;font-size:30px;font-weight:800;color:#c0a184;background:linear-gradient(145deg,#f3e7d6,#e9d8c2)}
+.product-meta{font-size:11px!important;color:#9c8779!important;margin-bottom:10px!important;min-height:0!important}
+
+/* Modifier groups: required vs optional must be obvious before tapping. */
+.required-tag,.optional-tag{display:inline-block;margin-inline-start:9px;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:4px 8px;border-radius:8px;vertical-align:middle}
+.required-tag{background:#f6e3d6;color:#9c5a2e}
+.optional-tag{background:#eee9e2;color:#8a7a6c}
+.section-missing h3{color:#a4442a}
+.field-error{display:flex;align-items:center;gap:7px;color:#a4442a;font-size:13px;font-weight:700;margin:10px 0 0}
+.choice-unavailable{opacity:.45;text-decoration:line-through}
+.muted-note{color:#8d7c6f;font-size:14px;margin:0 0 20px}
+
+/* Totals block. Every figure here comes from the POS quote. */
+.summary-lines{transition:opacity .18s}
+.summary-updating{opacity:.5}
+.summary-placeholder{color:#9c8a7b;font-size:14px;padding:14px 0;margin:0}
+.summary-discount span,.summary-discount strong{color:#4a7a46!important}
+.summary-vat{font-size:11px;color:#a08e7f;margin:-14px 0 18px;text-align:end}
+
+.review-line{display:flex;align-items:baseline;gap:14px;padding:12px 0;border-bottom:1px solid #f2e9df}
+.review-line:last-child{border:0}
+.review-qty{font-weight:800;color:#8d7667;min-width:32px}
+.review-name{flex:1;font-weight:700;line-height:1.35}
+.review-name small{display:block;font-weight:500;font-size:12px;color:#9a8779;margin-top:3px}
+
+.inline-error{margin:4px 0 18px;padding:14px}
+.inline-error p{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:13px;line-height:1.5}
+.payment-reference{font-size:12px;color:#7a6356;margin:8px 0 0;word-break:break-all}
+.payment-reference code{background:#f3e9dd;padding:3px 7px;border-radius:6px;font-size:12px}
+
+/* Confirmation: a pending order must not look like a finished one. */
+.confirm-page{display:grid;place-items:center;min-height:100dvh}
+.confirm-card{background:#fff;border:1px solid var(--line);border-radius:28px;padding:48px 40px;box-shadow:var(--shadow);text-align:center;max-width:560px;width:100%}
+.confirm-card>svg{color:#4a7a46;margin-bottom:18px}
+.confirm-card h1{font-size:clamp(30px,3.6vw,44px);margin-bottom:10px;letter-spacing:-1px}
+.confirm-card>p{color:#846f5e;font-size:16px;line-height:1.55;margin-bottom:24px}
+.confirm-pending>svg{color:#b8862f}
+.confirm-pending{border-color:#e8cd93;background:#fffdf7}
+.order-number-block{padding:22px;border-radius:20px;background:#f8f1e8;margin-bottom:20px}
+.order-number-block span{display:block;color:#8b7464;font-size:13px;font-weight:800;margin-bottom:4px}
+.order-number-block strong{font-size:62px;letter-spacing:2px;line-height:1.1;font-family:Outfit,sans-serif}
+.confirm-total{color:#6d5a4c;font-size:15px;margin-bottom:6px}
+.pending-spinner{display:flex;align-items:center;justify-content:center;gap:9px;color:#8a6a2c;font-size:14px;font-weight:700;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin 1s linear infinite}
+
+/* Inactivity timeout. Any touch cancels it: discarding a half-built order
+   because someone paused to read would be worse than waiting. */
+.idle-overlay{position:fixed;inset:0;z-index:50;background:#2d211ad9;backdrop-filter:blur(6px);display:grid;place-items:center;padding:24px}
+.idle-card{background:#fff;border-radius:26px;padding:44px 38px;text-align:center;max-width:430px;box-shadow:0 24px 60px rgba(40,25,15,.3)}
+.idle-card>svg{color:#b8862f;margin-bottom:16px}
+.idle-card h2{font-size:30px;margin-bottom:10px}
+.idle-card p{color:#7f6b5d;font-size:16px;margin-bottom:24px}
+
+/* Touch targets stay at least ~9mm on the 10-inch screens. */
+@media(max-width:1000px){
+  .choice-button{min-height:60px}
+  .category-tabs button{min-height:56px}
+  .status-banner{font-size:13px;padding:11px 14px}
+  .order-number-block strong{font-size:52px}
+}
+@media(max-width:740px){
+  .cart-item-fallback{width:80px;height:80px;font-size:24px}
+  .confirm-card{padding:34px 24px}
+  .fulfillment-row{grid-template-columns:1fr}
+}

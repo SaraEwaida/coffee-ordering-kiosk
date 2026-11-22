@@ -217,3 +217,82 @@ Branch `phase1-demo-pos-architecture`, two commits:
 2. Phase 1 — this work.
 
 **Nothing pushed.** Awaiting review.
+
+
+---
+
+## 2026-11-22 — Phase 2 (partial): kiosk UI on the new API
+
+### Why this was needed
+
+After Phase 1 the customer screen was unchanged: still Version 3, still
+dollars, still six drinks and no food. Everything built in Phase 1 was
+invisible from the kiosk. This phase connects them.
+
+### What changed
+
+| Area | Files |
+|---|---|
+| Data layer | `src/api.js` rewritten for `/api/kiosk/*`; `src/config.js` now formats integer minor units and takes currency from the server |
+| Shell | `src/App.jsx` rewritten: menu polling, cart in POS IDs and modifier IDs, server-quoted totals, idempotent submission |
+| Screens | `Menu.jsx` (POS categories), `CustomizeDrink.jsx` (real modifier groups), `Cart.jsx` and new `QuoteSummary.jsx` (server totals), `Checkout.jsx`, `Confirmation.jsx` |
+| New | `src/lib/modifiers.js` (pure selection rules), `src/components/IdleWarning.jsx` |
+| Config | `vite.config.js` proxies `/api/kiosk` to 4001 ahead of `/api` to 3001 |
+| Strings | `shared/i18n.js` — 164 keys, full English/Arabic parity, none identical between languages |
+
+### Decisions worth recording
+
+**Currency is no longer a constant.** `src/config.js` had
+`export const currency = 'USD'`. It now comes from `/api/kiosk/config`, which
+gets it from the POS, so rebranding for a client is configuration.
+
+**Version 3 prices were not converted.** V3 holds dollar amounts; the new
+catalog is priced fresh in shekels. Converting would have meant inventing an
+exchange rate and rewriting what customers actually paid.
+
+**Modifier rules moved out of the component** into `src/lib/modifiers.js`.
+Node cannot import `.jsx`, which forced the question — and pure rules belong
+outside a component anyway. They are now directly tested.
+
+**Three Version 3 screens were removed deliberately**, each recorded in
+`DEVELOPMENT_PLAN.md` with the phase that restores it. The staff screens are
+already replaced by something better; the QR receipt and the rewards flow are
+scheduled, and no rewards data is lost.
+
+### Test results
+
+```
+194 tests, 194 passing, 0 failing  (~11 s)
+```
+
+26 new tests in `kioskUi.test.js` cover ILS formatting (including that no
+dollar sign can appear and that Arabic uses Latin digits), language fallback,
+every modifier selection and toggle rule, and the exact payload the screens
+build — asserting that the default selection satisfies the POS for *every*
+product in the catalog, so no item can be unorderable out of the box.
+
+### Verified by running it
+
+Full journey through the Vite proxy, exactly as the browser does it:
+
+```
+Large oat latte + vanilla sugar: 24.50
+2x Za'atar Manakish (warm):      14.00
+subtotal: 38.50 | dine-in: 2.00
+TOTAL:    40.50 ILS  (VAT inside: 5.59)
+order: confirmed | number: 1001
+
+Barista queue:
+  #1001 | 40.50 ILS | dine_in
+     1x Caffè Latte — Oat milk, Large, 1 spoon
+     2x Za'atar Manakish — Warm it up
+```
+
+### Outstanding risks
+
+| Risk | Note |
+|---|---|
+| **Nothing in the UI has been opened in a browser.** | There is no browser in this environment. Pure logic is tested; rendering, RTL layout, the idle overlay and touch targets are not. |
+| **Responsive layouts are unverified.** | CSS for 10" landscape, 10" portrait and 27" portrait exists; nothing proves it does not overflow. |
+| **No upselling, promo entry, table numbers or rewards UI.** | Phase 2 items 6, 7, 8 and 11, all still open. |
+| **Food items have no photographs.** | A monogram placeholder is shown. Real photos would need to be supplied. |

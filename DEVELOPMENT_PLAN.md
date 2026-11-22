@@ -132,13 +132,58 @@ Full detail in `IMPLEMENTATION_LOG.md`.
 | Loyalty adapter interface | Tables exist and V3 balances import into them; fronting them with an adapter is Phase 2 item 8. |
 | No browser/E2E test | Phase 7 builds the UI test layer. |
 
-## Phases 2–7 — not started
+## Phase 2 — Customer ordering screens — *partly complete*
+
+The kiosk UI now talks to the Phase 1 API. Prices are shekels, VAT-inclusive,
+and the bakery and snacks appear, because the catalog comes from the POS rather
+than a hardcoded file.
+
+| # | Item | Status |
+|---|---|---|
+| 2.1 | Branded welcome screen with language selector | Implemented + tested |
+| 2.2 | Dine-in / takeaway, configurable per store | Implemented + tested |
+| 2.3 | Catalog with POS categories, photos, calories, allergens | Implemented + tested |
+| 2.4 | Required and optional modifiers with min/max validation | Implemented + tested |
+| 2.5 | Cart with quantity, remove, customization summaries | Implemented + tested |
+| 2.6 | POS-backed upselling rules | **Not started** |
+| 2.7 | Promotion / loyalty code entry UI | **Not started** (API exists and is tested) |
+| 2.8 | Bloom Rewards behind a loyalty adapter | **Not started** — see regression note below |
+| 2.9 | Dine-in surcharge as a distinct line | Implemented + tested |
+| 2.10 | VAT-inclusive pricing, VAT shown not added | Implemented + tested |
+| 2.11 | Table tent number for dine-in | **Not started** (schema and API support it) |
+| 2.12 | Inactivity timeout with warning | Implemented, **not browser-tested** |
+| 2.13 | Confirmation with POS order number | Implemented + tested; **QR receipt missing** |
+| 2.14 | Arabic/English parity, RTL, ILS formatting | 164/164 keys, **layout not browser-verified** |
+| 2.15 | Responsive 10" landscape / 10" portrait / 27" portrait | CSS written, **not verified on hardware** |
+| 2.16 | Understandable errors and recovery paths | Implemented + tested |
+
+### Deliberate regressions, to be restored
+
+Moving the UI onto the new API removed three Version 3 features. None is lost
+work — each is superseded or scheduled — but none should be described as
+present today.
+
+| Removed | Why | Restored in |
+|---|---|---|
+| `Kitchen.jsx`, `Admin.jsx`, `StaffGate.jsx` | These put staff controls inside the customer bundle, reachable at `?view=kitchen`. The brief requires staff screens to be a separate authenticated application, which the Demo POS console now is. | Already replaced, and better |
+| `Receipt.jsx` — QR digital receipt | Needs a receipt token on the new order model and a phone-reachable URL. | Phase 4 |
+| `RewardsCard.jsx`, `RewardsLookup.jsx` — Bloom Rewards entry | Rewards are being moved behind a loyalty adapter so a client's own programme can replace ours. The **data is preserved** in `pos_loyalty_*` and imports from V3. | Phase 2.8 |
+
+### Phase 2 acceptance — partly met
+
+- [x] A customer can complete a 2–3 item order in both languages
+- [x] Totals match the POS quote exactly
+- [x] Bakery and snacks orderable, reaching the barista with modifiers
+- [ ] No UI overflow on 10" landscape, 10" portrait, 27" portrait — **unverified without hardware or a browser test**
+
+---
+
+## Phases 3–7 — not started
 
 Scope is fixed by the project brief; no code yet. Listed so status stays honest.
 
 | Phase | Summary | Status |
 |---|---|---|
-| 2 | Full bilingual customer ordering screens, modifiers, cart, upsell, surcharge, timeout, responsive 10"/27" | Not started |
 | 3 | Payment simulator state machine, gift cards, split payment, cash-at-counter, approved-then-POS-failure recovery | Not started |
 | 4 | Local device service, printer adapter, 80 mm receipts, QR digital receipts | Not started |
 | 5 | Config console, branding, multi-tenant isolation, rebrand without code edits | Not started |

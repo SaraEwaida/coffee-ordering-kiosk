@@ -1,17 +1,17 @@
 import React from 'react';
-import { ArrowRight, ArrowLeft, Coffee, Sparkles, Gift } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Coffee, Sparkles } from 'lucide-react';
 import TopBar from '../components/TopBar.jsx';
-export default function Welcome({t,lang,onLanguage,onStart,onRewards}) {
+export default function Welcome({t,lang,onLanguage,onStart,storeName,offline}) {
   const Arrow=lang==='ar'?ArrowLeft:ArrowRight;
   return <div className="welcome-screen">
-    <TopBar t={t} lang={lang} onLanguage={onLanguage}/>
+    <TopBar t={t} lang={lang} onLanguage={onLanguage} storeName={storeName}/>
     <main className="welcome-main">
       <div className="welcome-copy">
         <div className="eyebrow"><Sparkles size={18}/>{t.welcomeEyebrow}</div>
         <h1>{t.welcomeTitle}</h1>
         <p>{t.welcomeSubtitle}</p>
         <button className="primary-button hero-button" onClick={onStart}>{t.orderNow}<span className="button-arrow"><Arrow size={26}/></span></button>
-        <div className="welcome-rewards-row"><button className="outline-button welcome-rewards-link" onClick={onRewards}><Gift size={18}/>{t.rewards}</button><div className="mini-note"><span className="note-dot"/>{t.scan}</div></div>
+        <div className="welcome-rewards-row"><div className="mini-note"><span className="note-dot"/>{offline ? t.posOffline : t.scan}</div></div>
       </div>
       <div className="hero-visual" aria-label="Latte coffee photograph">
         <div className="hero-ring ring-one"/><div className="hero-ring ring-two"/>

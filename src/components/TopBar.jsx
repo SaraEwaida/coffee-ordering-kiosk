@@ -1,8 +1,14 @@
 import React from 'react';
 import { ArrowLeft, ArrowRight, Coffee, ShoppingBag, Globe2, Home } from 'lucide-react';
-import { brand } from '../config.js';
+import { FALLBACK_BRAND } from '../config.js';
 
-export default function TopBar({t,lang,onLanguage,onBack,onHome,onCart,cartCount=0,section='',staff=false}) {
+export default function TopBar({
+  t, lang, onLanguage, onBack, onHome, onCart, cartCount = 0, section = '',
+  staff = false, storeName,
+}) {
+  // The store name comes from the POS via /api/kiosk/config, so rebranding
+  // for a new client is configuration rather than a code edit.
+  const brand = storeName || FALLBACK_BRAND;
   const BackIcon = lang === 'ar' ? ArrowRight : ArrowLeft;
   return <header className="topbar">
     <div className="topbar-side">
