@@ -315,3 +315,65 @@ orders the POS refused).
 Requires a **manager** token. It lists payment references and failure detail
 for orders where a customer's money moved, so it is deliberately not reachable
 from the kiosk or by a barista account.
+
+## Digital receipts
+
+A confirmed order carries `receiptToken` and `receiptUrl`. The token is 32
+random bytes (base64url, 43 chars) and expires after 72 hours.
+
+The token is stored in `kiosk.sqlite` (`kiosk_receipts`), **not** in
+`pos_orders`. A real client POS will not give us a column for our QR tokens,
+so the kiosk owns the link and the POS owns the order.
+
+### `GET /api/receipts/:token`
+
+```http
+GET /api/receipts/8_T4RKMMxBldxWeKQjTji7zqAy3PebnMABsiHNG9Rb4
+
+200 OK
+{
+  "receipt": {
+    "posOrderNumber": "1001",
+    "currency": "ILS",
+    "fulfillment": "dine_in",
+    "kitchenStatus": "queued",
+    "paymentStatus": "unpaid",
+    "itemsSubtotalMinor": 5100,
+    "surchargeMinor": 200,
+    "totalMinor": 5300,
+    "vatIncludedMinor": 731,
+    "items": [ { "nameEn": "Latte", "quantity": 2, "lineTotalMinor": 3600, "modifiers": [...] } ]
+  }
+}
+```
+
+Unknown, malformed and expired tokens all return the same `404` — a guessed
+token learns nothing from the difference.
+
+Order status is re-read from the POS at view time, so a receipt opened later
+shows current kitchen and payment status rather than a snapshot.
+
+### `GET /receipt/:token`
+
+The same receipt as a self-contained HTML page: no JavaScript, no React
+bundle, mobile viewport, `noindex`, bilingual. This is what the QR code
+points at, because the reader is a phone camera.
+
+### Reachable origin
+
+`receiptUrl` is built from `PUBLIC_RECEIPT_ORIGIN` when set, otherwise from
+the machine's LAN IPv4 address. It is never `localhost`: a QR pointing at
+localhost scans correctly and then fails on the customer's phone. When no
+reachable address can be determined the URL is `null` and the kiosk shows no
+QR code rather than a dead one.
+
+Set `PUBLIC_RECEIPT_ORIGIN` for any deployment behind a hostname or TLS.
+
+### Not covered
+
+- Receipts are bearer URLs over plain HTTP on a LAN in the PoC. A real
+  deployment needs TLS.
+- No rate limiting on `/receipt/:token` yet; brute-forcing a 32-byte token is
+  not feasible, but the endpoint should still be throttled before production.
+- Expired rows are removed by `receipts.purgeExpired()`, which is not yet on
+  a schedule.

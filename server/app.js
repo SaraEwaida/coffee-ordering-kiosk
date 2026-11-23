@@ -12,9 +12,11 @@ import { KioskStore } from './services/kioskStore.js';
 import { MenuSyncService } from './services/menuSync.js';
 import { CheckoutService } from './services/checkout.js';
 import { PaymentService } from './services/payments.js';
+import { ReceiptService } from './services/receipts.js';
 import { SimulatorPaymentAdapter } from './adapters/payments/SimulatorPaymentAdapter.js';
 import { kioskRoutes } from './routes/kiosk.js';
 import { demoPosRoutes } from './routes/demoPos.js';
+import { receiptRoutes } from './routes/receipts.js';
 import { requestId, noStore, errorHandler, notFoundHandler } from './middleware/errors.js';
 import { posAuth, requireRole } from './demo-pos/auth.js';
 import { createLogger } from './lib/logger.js';
@@ -159,6 +161,10 @@ export function buildPlatform({
     paymentAdapter, posAdapter: adapter, kioskStore, checkout, storeId, logger,
   });
 
+  // Digital receipts. The kiosk owns the link; the POS owns the order.
+  const receipts = new ReceiptService({ kioskStore, adapter, storeId, logger });
+  checkout.receipts = receipts;
+
   // ---- express -----------------------------------------------------------
   const app = express();
   app.disable('x-powered-by');
@@ -171,6 +177,10 @@ export function buildPlatform({
 
   app.use('/api/kiosk', kioskRoutes({ menuSync, checkout, payments, kioskStore, storeId, logger }));
   app.use('/demo-pos/api', demoPosRoutes({ store, adapter, paymentAdapter, logger }));
+
+  // Digital receipts: JSON for clients, plain HTML for a customer's phone.
+  // Mounted at the root because the QR code encodes a short, typable URL.
+  app.use(receiptRoutes({ receipts, logger }));
 
   // Demo POS staff console. Served from its own path, as a plain static page
   // separate from the kiosk's React bundle: the till is a different
@@ -226,6 +236,7 @@ export function buildPlatform({
     menuSync,
     checkout,
     payments,
+    receipts,
     storeId,
     logger,
     importSummary,

@@ -1,0 +1,201 @@
+import { describe, test, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { makeTestPlatform, LATTE_LINE } from './helpers.js';
+import { ReceiptService, receiptOrigin, RECEIPT_TOKEN_PATTERN } from '../services/receipts.js';
+import { receiptRoutes } from '../routes/receipts.js';
+import express from 'express';
+
+let platform;
+beforeEach(async () => {
+  platform = makeTestPlatform();
+  await platform.menuSync.syncNow();
+});
+afterEach(() => platform?.close());
+
+/** Place a real order through the full checkout path. */
+async function placeOrder(p, clientRequestId = 'req-receipt-1') {
+  const quote = await p.checkout.createQuote({ kioskId: 'kiosk-01', cart: { fulfillment: 'takeaway', lines: [LATTE_LINE] } });
+  return p.checkout.submitOrder({ clientRequestId, quoteId: quote.quoteId, kioskId: 'kiosk-01' });
+}
+
+describe('receipts: issuing', () => {
+  test('a confirmed order gets a receipt token', async () => {
+    const result = await placeOrder(platform);
+    assert.equal(result.status, 'confirmed');
+    assert.ok(result.receiptToken, 'a confirmed order must carry a receipt token');
+    assert.match(result.receiptToken, RECEIPT_TOKEN_PATTERN);
+  });
+
+  test('the token is unguessable: 32 random bytes, base64url', async () => {
+    const seen = new Set();
+    for (let i = 0; i < 25; i += 1) {
+      const token = platform.receipts.issue({ posOrderId: `pos-${i}`, posOrderNumber: `${1000 + i}` });
+      assert.match(token, RECEIPT_TOKEN_PATTERN);
+      assert.equal(Buffer.from(token, 'base64url').length, 32);
+      seen.add(token);
+    }
+    assert.equal(seen.size, 25, 'every token must be distinct');
+  });
+
+  test('re-issuing for the same POS order returns the same link', async () => {
+    const first = platform.receipts.issue({ posOrderId: 'pos-x', posOrderNumber: '1001' });
+    const second = platform.receipts.issue({ posOrderId: 'pos-x', posOrderNumber: '1001' });
+    assert.equal(first, second, 'one order must not accumulate receipt links');
+    const n = platform.kioskDb.prepare('SELECT COUNT(*) AS n FROM kiosk_receipts').get().n;
+    assert.equal(n, 1);
+  });
+
+  test('a retried submission does not mint a second token', async () => {
+    const first = await placeOrder(platform, 'req-same');
+    const second = await placeOrder(platform, 'req-same');
+    assert.equal(first.receiptToken, second.receiptToken);
+  });
+
+  test('the token lives in the kiosk database, never in pos_orders', async () => {
+    await placeOrder(platform);
+    const posColumns = platform.posDb.prepare('PRAGMA table_info(pos_orders)').all().map((c) => c.name);
+    assert.ok(!posColumns.some((c) => c.includes('receipt')),
+      'a real client POS will not store our receipt tokens; the column must not exist');
+    assert.equal(platform.kioskDb.prepare('SELECT COUNT(*) AS n FROM kiosk_receipts').get().n, 1);
+  });
+});
+
+describe('receipts: resolving', () => {
+  test('a valid token resolves to the order', async () => {
+    const order = await placeOrder(platform);
+    const receipt = await platform.receipts.resolve(order.receiptToken);
+    assert.ok(receipt);
+    assert.equal(receipt.posOrderNumber, order.posOrderNumber);
+    assert.equal(receipt.totalMinor, order.order.totalMinor);
+    assert.ok(receipt.items.length > 0);
+  });
+
+  test('status is re-read from the POS, not frozen at issue time', async () => {
+    const order = await placeOrder(platform);
+    platform.store.updateKitchenStatus(order.posOrderId, 'ready', { type: 'manager', id: 't' });
+    const receipt = await platform.receipts.resolve(order.receiptToken);
+    assert.equal(receipt.kitchenStatus, 'ready', 'a receipt opened later must show current status');
+  });
+
+  test('no payment reference or customer detail leaks onto a bearer URL', async () => {
+    const order = await placeOrder(platform);
+    const receipt = await platform.receipts.resolve(order.receiptToken);
+    const serialised = JSON.stringify(receipt);
+    assert.ok(!('paymentReference' in receipt), 'payment reference must not appear on a shareable link');
+    assert.ok(!/customer_name|phone|loyalty/i.test(serialised));
+  });
+
+  test('an unknown token resolves to nothing', async () => {
+    assert.equal(await platform.receipts.resolve('A'.repeat(43)), null);
+  });
+
+  test('a malformed token is rejected before touching the database', async () => {
+    for (const bad of ['', 'short', '../../etc/passwd', "' OR 1=1 --", 'x'.repeat(200), null]) {
+      assert.equal(await platform.receipts.resolve(bad), null, `must reject: ${bad}`);
+    }
+  });
+
+  test('an expired token stops working', async () => {
+    const expired = new ReceiptService({
+      kioskStore: platform.kioskStore, adapter: platform.adapter, storeId: platform.storeId, ttlHours: -1,
+    });
+    // A POS order the live service has not already issued a token for,
+    // otherwise issue() correctly hands back the existing un-expired link.
+    const order = await placeOrder(platform);
+    platform.kioskDb.prepare('DELETE FROM kiosk_receipts WHERE pos_order_id = ?').run(order.posOrderId);
+    const token = expired.issue({ posOrderId: order.posOrderId, posOrderNumber: order.posOrderNumber });
+    assert.equal(await expired.resolve(token), null, 'an expired link must not resolve');
+  });
+
+  test('purgeExpired removes only dead links', async () => {
+    const order = await placeOrder(platform);
+    const live = order.receiptToken;
+    platform.kioskDb
+      .prepare("INSERT INTO kiosk_receipts (token, store_id, pos_order_id, pos_order_number, expires_at) VALUES (?,?,?,?,?)")
+      .run('B'.repeat(43), platform.storeId, 'pos-dead', '999', '2000-01-01T00:00:00.000Z');
+    assert.equal(platform.receipts.purgeExpired(), 1);
+    assert.ok(await platform.receipts.resolve(live), 'a live receipt must survive the purge');
+  });
+});
+
+describe('receipts: reachable origin', () => {
+  test('PUBLIC_RECEIPT_ORIGIN wins and loses a trailing slash', () => {
+    assert.equal(receiptOrigin({ env: { PUBLIC_RECEIPT_ORIGIN: 'https://shop.example/' } }), 'https://shop.example');
+  });
+
+  test('without configuration the origin is never localhost', () => {
+    const origin = receiptOrigin({ env: {}, port: 3001 });
+    if (origin !== null) {
+      assert.ok(!/localhost|127\.0\.0\.1/.test(origin),
+        'a QR pointing at localhost scans fine and then fails on the phone');
+    }
+  });
+
+  test('no reachable origin means no URL, rather than a broken one', () => {
+    const service = new ReceiptService({
+      kioskStore: platform.kioskStore, adapter: platform.adapter, storeId: platform.storeId, origin: null,
+    });
+    service.origin = null;
+    const url = service.urlFor(null);
+    assert.equal(url, null);
+  });
+});
+
+describe('receipts: HTTP surface', () => {
+  async function serve() {
+    const app = express();
+    app.use(receiptRoutes({ receipts: platform.receipts }));
+    const server = app.listen(0);
+    await new Promise((r) => server.once('listening', r));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    return { base, close: () => new Promise((d) => server.close(d)) };
+  }
+
+  test('GET /api/receipts/:token returns the receipt', async () => {
+    const order = await placeOrder(platform);
+    const { base, close } = await serve();
+    try {
+      const res = await fetch(`${base}/api/receipts/${order.receiptToken}`);
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.equal(body.receipt.posOrderNumber, order.posOrderNumber);
+    } finally { await close(); }
+  });
+
+  test('an unknown token is a 404, not a server error', async () => {
+    const { base, close } = await serve();
+    try {
+      assert.equal((await fetch(`${base}/api/receipts/${'C'.repeat(43)}`)).status, 404);
+      assert.equal((await fetch(`${base}/receipt/${'C'.repeat(43)}`)).status, 404);
+    } finally { await close(); }
+  });
+
+  test('GET /receipt/:token renders HTML a phone can read', async () => {
+    const order = await placeOrder(platform);
+    const { base, close } = await serve();
+    try {
+      const res = await fetch(`${base}/receipt/${order.receiptToken}`);
+      assert.equal(res.status, 200);
+      assert.match(res.headers.get('content-type'), /text\/html/);
+      const html = await res.text();
+      assert.match(html, /<!doctype html>/i);
+      assert.ok(html.includes(order.posOrderNumber), 'the order number must appear');
+      assert.match(html, /viewport/, 'must be mobile-sized');
+      assert.match(html, /noindex/, 'a receipt must not be indexable');
+      assert.ok(!/<script/i.test(html), 'must render without JavaScript');
+      assert.match(html, /إيصال/, 'Arabic must be present');
+    } finally { await close(); }
+  });
+
+  test('order content is HTML-escaped', async () => {
+    const order = await placeOrder(platform);
+    platform.posDb.prepare('UPDATE pos_order_items SET name_snapshot_en = ? WHERE order_id = ?')
+      .run('<script>alert(1)</script>', order.posOrderId);
+    const { base, close } = await serve();
+    try {
+      const html = await (await fetch(`${base}/receipt/${order.receiptToken}`)).text();
+      assert.ok(!html.includes('<script>alert(1)</script>'), 'product names must be escaped');
+      assert.match(html, /&lt;script&gt;/);
+    } finally { await close(); }
+  });
+});

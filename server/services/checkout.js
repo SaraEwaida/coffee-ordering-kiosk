@@ -22,8 +22,12 @@ import { badRequest, conflict, menuChanged, notFound, posUnavailable, validation
 const CLIENT_REQUEST_ID_PATTERN = /^[\w-]{8,100}$/;
 
 export class CheckoutService {
-  constructor({ adapter, kioskStore, menuSync, storeId, logger }) {
+  constructor({ adapter, kioskStore, menuSync, storeId, logger, receipts = null }) {
     this.adapter = adapter;
+    // Optional: when present, a confirmed order gets a digital receipt link.
+    // Receipt issuing must never be able to fail an order, so every call is
+    // guarded — a missing QR is a far smaller problem than a lost order.
+    this.receipts = receipts;
     this.kioskStore = kioskStore;
     this.menuSync = menuSync;
     this.storeId = storeId;
@@ -142,6 +146,9 @@ export class CheckoutService {
           status: 'confirmed',
           posOrderId: existing.posOrderId,
           posOrderNumber: existing.posOrderNumber,
+          // A double-tap or a browser reload must return the SAME receipt
+          // link, not drop it: the customer is looking at the QR code.
+          ...this.#receiptFor(existing, existing.kioskId),
           order,
         };
       }
@@ -332,6 +339,7 @@ export class CheckoutService {
         status: 'confirmed',
         posOrderId: order.posOrderId,
         posOrderNumber: order.posOrderNumber,
+        ...this.#receiptFor(order, submission.kioskId),
         order,
       };
     } catch (error) {
@@ -438,8 +446,33 @@ export class CheckoutService {
       lastError: submission.lastError,
       nextAttemptAt: submission.nextAttemptAt,
       paymentAccepted: submission.paymentAccepted,
+      ...(submission.status === 'submitted'
+        ? this.#receiptFor({ posOrderId: submission.posOrderId, posOrderNumber: submission.posOrderNumber }, submission.kioskId)
+        : {}),
       order,
     };
+  }
+
+  /**
+   * Receipt token and URL for a confirmed order, or `{}`.
+   *
+   * Never throws. An order that reached the POS is the thing that matters; if
+   * receipt issuing breaks, the customer loses a QR code, not their coffee.
+   */
+  #receiptFor(order, kioskId) {
+    if (!this.receipts || !order?.posOrderId) return {};
+    try {
+      const token = this.receipts.issue({
+        posOrderId: order.posOrderId,
+        posOrderNumber: order.posOrderNumber,
+        kioskId,
+      });
+      if (!token) return {};
+      return { receiptToken: token, receiptUrl: this.receipts.urlFor(token) };
+    } catch (error) {
+      this.logger?.warn?.({ err: error, posOrderId: order.posOrderId }, 'receipt issue failed');
+      return {};
+    }
   }
 }
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Clock, Loader2 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../api.js';
 import { formatMinor } from '../config.js';
 
@@ -38,6 +39,11 @@ export default function Confirmation({ t, lang, currency, order, onNew }) {
   const isConfirmed = live.status === 'confirmed';
   const total = live.order?.totalMinor ?? order.order?.totalMinor;
 
+  // The receipt URL is built by the server from a LAN-reachable address. If it
+  // could not work one out it sends null, and we show no QR rather than a code
+  // pointing at localhost — which would scan fine and then fail on the phone.
+  const receiptUrl = live.receiptUrl ?? order.receiptUrl ?? null;
+
   return (
     <div className="inner-screen">
       <main className="page-width confirm-page">
@@ -65,6 +71,19 @@ export default function Confirmation({ t, lang, currency, order, onNew }) {
 
           {total != null && (
             <p className="confirm-total">{t.total}: <strong>{formatMinor(total, currency, lang)}</strong></p>
+          )}
+
+          {isConfirmed && receiptUrl && (
+            <div className="receipt-qr">
+              <QRCodeSVG
+                value={receiptUrl}
+                size={148}
+                level="M"
+                marginSize={2}
+                title={t.receiptQrTitle}
+              />
+              <p>{t.receiptQrHint}</p>
+            </div>
           )}
 
           <p className="demo-hint">{t.payAtCounterNote}</p>

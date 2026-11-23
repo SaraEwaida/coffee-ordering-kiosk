@@ -230,3 +230,39 @@ html[dir=rtl] .topbar{direction:rtl}html[dir=rtl] .photo-label{left:auto;right:1
   .gift-row{flex-direction:column}
   .gift-row .outline-button{width:100%}
 }
+
+/* ---- digital receipt QR -------------------------------------------------
+   Sized so a phone camera locks on from a comfortable standing distance at
+   the kiosk. The white quiet-zone is kept even on a light card: scanners
+   need the contrast border, and a QR flush against a cream panel is
+   noticeably slower to read. */
+.receipt-qr {
+  margin: 20px auto 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.receipt-qr svg {
+  background: #fff;
+  padding: 10px;
+  border-radius: 12px;
+  box-shadow: 0 1px 6px rgba(70, 50, 30, 0.14);
+  display: block;
+}
+
+.receipt-qr p {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--muted, #7b6a58);
+  text-align: center;
+}
+
+/* The 10-inch landscape kiosk is the tightest vertical budget: shrink the
+   code rather than push the "new order" button off-screen. */
+@media (max-height: 820px) {
+  .receipt-qr { margin-top: 14px; gap: 7px; }
+  .receipt-qr svg { padding: 8px; width: 116px; height: 116px; }
+  .receipt-qr p { font-size: 0.86rem; }
+}

@@ -390,3 +390,56 @@ with exactly one order; and the bank stubs refusing rather than approving.
 | **No real terminal has ever been attached.** | Everything about real card handling remains a design, not an implementation. |
 | **Refund and void are not implemented.** | The simulator has a `voided` state but nothing drives it. A real refund needs acquirer confirmation and is not simulated. |
 | **Receipts are still Phase 4.** | A payment produces an order number and nothing printable. |
+
+## QR digital receipts restored (regression fix)
+
+The Phase 1-3 rewrite moved the kiosk onto a new API and left the V3 digital
+receipt behind. `qrcode.react` was still a dependency and the V3 code still
+sat in `server/index.js`, but the flow actually being run had no receipt
+token, no receipt route and no QR on the confirmation screen. Caught by the
+user, not by me — I did not flag it when replacing the confirmation page.
+
+### Changed
+
+- `server/database/migrations/kiosk/003_receipts.sql` — `kiosk_receipts`,
+  unique on `pos_order_id`.
+- `server/services/receipts.js` — issue/resolve/purge, LAN origin discovery.
+- `server/routes/receipts.js` — `/api/receipts/:token` and `/receipt/:token`.
+- `server/services/checkout.js` — issues a token on confirmation; guarded so
+  receipt failure can never fail an order.
+- `server/app.js` — wiring, `receipts` exported from the platform.
+- `src/pages/Confirmation.jsx`, `src/styles.css`, `shared/i18n.js` — QR.
+- `server/tests/receipts.test.js` — 19 tests.
+
+### Decisions
+
+- **Token on the kiosk side, not in `pos_orders`.** A real client POS will not
+  store our QR tokens. Putting the column there would bake in an assumption
+  that breaks at the first real integration. A test asserts the POS table has
+  no receipt column.
+- **Content re-read from the POS at view time**, not frozen at issue. A
+  receipt opened twenty minutes later shows current kitchen status.
+- **No payment reference on the receipt payload.** It is a bearer URL.
+- **Origin is never localhost.** A QR pointing at localhost scans fine and
+  then fails on the phone — the one failure mode that looks like success in a
+  demo. No reachable address means no QR rather than a dead one.
+
+### Bug found while testing
+
+The idempotent-replay branch of `submitOrder` returned early without a
+receipt token, so a double-tap or browser reload dropped the customer's QR
+code. Found by a test, not by reading. Fixed; covered by
+"a retried submission does not mint a second token".
+
+### Verified
+
+- 290 tests pass (19 new), 0 fail. `npm run build` clean.
+- End-to-end against a running server: 2-item dine-in order, token issued,
+  JSON and HTML both served, VAT extracted correctly (₪7.31 of ₪53.00 =
+  16/116), unknown token 404s.
+
+### Not verified
+
+- Nothing rendered in a browser. The QR has not been scanned with a real
+  phone, and the confirmation-screen layout at 10-inch landscape is unchecked.
+- Arabic RTL on the receipt page is written but unseen.
