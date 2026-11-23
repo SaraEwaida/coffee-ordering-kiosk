@@ -92,3 +92,52 @@ start msedge --kiosk "http://localhost:4001" --edge-kiosk-type=fullscreen --no-f
 | Rate limiting is per-process, in memory | Restarting the API clears it. |
 | `node:sqlite` is flagged experimental | Prints a warning; a future Node release could change behaviour. |
 | Dev passwords exist if the env vars are unset | The app warns on every boot and refuses to start in production without them. |
+
+## Screen orientation
+
+### Target hardware
+
+Samsung DB10E-T (`LH10DBEPTGC`), 10.1 inch, **1280 x 800**, display area
+217.0 mm x 135.6 mm, driven over HDMI from the Windows mini PC.
+
+That works out to 5.90 px/mm, so the 9 mm minimum touch target is **53 px**.
+Interactive controls are set to 54 px in portrait and on small screens.
+
+| Target            | Resolution  | Notes                                   |
+|-------------------|-------------|-----------------------------------------|
+| 10.1" landscape   | 1280 x 800  | native orientation                      |
+| 10.1" portrait    | 800 x 1280  | panel physically rotated 90 degrees     |
+| 27" portrait      | 1080 x 1920 | larger type, controls kept low for reach |
+
+### Testing orientation without rotating hardware
+
+Chrome DevTools is far quicker than rotating a panel for every CSS change:
+
+1. `npm run dev`, open the kiosk in Chrome
+2. `F12`, then `Ctrl+Shift+M` for device toolbar
+3. Choose **Responsive** and type the resolution: `800 x 1280`
+4. The rotate button beside the dimensions flips orientation
+
+In development only, `?screen=menu` and `?lang=ar` jump straight to a screen
+and language, so styling does not mean clicking through the flow each time.
+Valid screens: `welcome`, `menu`, `customize`, `cart`, `checkout`. These
+query parameters are stripped from production builds by `import.meta.env.DEV`
+and do nothing in a deployed kiosk.
+
+### Rotating the real display (Windows)
+
+The HDMI display rotates independently of the laptop screen:
+
+1. **Settings > System > Display**
+2. Click the box representing the Samsung panel, not the built-in screen
+3. Set **Display orientation** to **Portrait** (or *Portrait (flipped)*,
+   depending which way the panel is physically turned)
+4. Keep the built-in laptop screen on **Landscape** — only the selected
+   display changes
+
+The panel must also be physically mounted at 90 degrees. Rotating in Windows
+only rotates the signal.
+
+Verify the kiosk fills the panel: the browser must be fullscreen on that
+display (`F11`, or Edge kiosk mode as described above), not on the laptop
+screen.

@@ -24,9 +24,29 @@ const CART_STORAGE_KEY = 'bean-bloom-cart-v2';
  * 2. **The POS owns the catalog.** Products, prices, availability and modifier
  *    groups all arrive from `/api/kiosk/menu`. Nothing is hardcoded.
  */
+/**
+ * Development-only screen override: `?screen=menu`, `?lang=ar`.
+ *
+ * Styling the kiosk for three screen sizes means loading the same page
+ * dozens of times; clicking through the flow each time is the slow part.
+ * Stripped from production builds by `import.meta.env.DEV`, so a deployed
+ * kiosk cannot be jumped past its own welcome screen with a query string.
+ */
+function devInitialPage() {
+  if (!import.meta.env.DEV) return 'welcome';
+  const screen = new URLSearchParams(window.location.search).get('screen');
+  return ['welcome', 'menu', 'customize', 'cart', 'checkout'].includes(screen) ? screen : 'welcome';
+}
+
 export default function App() {
-  const [lang, setLang] = useState(() => (localStorage.getItem('bean-bloom-lang') === 'ar' ? 'ar' : 'en'));
-  const [page, setPage] = useState('welcome');
+  const [lang, setLang] = useState(() => {
+    if (import.meta.env.DEV) {
+      const forced = new URLSearchParams(window.location.search).get('lang');
+      if (forced === 'ar' || forced === 'en') return forced;
+    }
+    return localStorage.getItem('bean-bloom-lang') === 'ar' ? 'ar' : 'en';
+  });
+  const [page, setPage] = useState(devInitialPage);
   const [config, setConfig] = useState(null);
   const [menu, setMenu] = useState(null);
   const [menuError, setMenuError] = useState('');

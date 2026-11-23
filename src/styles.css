@@ -266,3 +266,94 @@ html[dir=rtl] .topbar{direction:rtl}html[dir=rtl] .photo-label{left:auto;right:1
   .receipt-qr svg { padding: 8px; width: 116px; height: 116px; }
   .receipt-qr p { font-size: 0.86rem; }
 }
+
+/* =========================================================================
+   PORTRAIT ORIENTATION
+   -------------------------------------------------------------------------
+   Two portrait targets: a 10-inch kiosk at 800x1280 and a 27-inch at
+   1080x1920. Everything here is scoped to `orientation: portrait` so the
+   landscape layout is untouched.
+
+   The base welcome screen is a 52/48 two-column grid with `margin:auto`,
+   which on a tall screen centres a short horizontal block and leaves ~650px
+   of dead cream above and below it. Portrait needs the opposite: one
+   column, stacked, using the height instead of hiding from it.
+   ========================================================================= */
+
+@media (orientation: portrait) {
+  .welcome-main {
+    grid-template-columns: 1fr;
+    align-content: center;
+    justify-items: center;
+    /* `margin:auto` is what produced the dead bands. */
+    margin: 0;
+    width: 100%;
+    gap: clamp(14px, 2.5vh, 44px);
+    padding: clamp(18px, 2.5vh, 48px) clamp(22px, 6vw, 80px) clamp(22px, 3.5vh, 64px);
+  }
+
+  /* Image above, words below: the photo pulls the eye from across the shop,
+     the call to action sits closer to the hand. */
+  .hero-visual { order: 1; height: auto; min-height: 0; padding: clamp(8px, 1.5vh, 26px) 0; }
+  .welcome-copy { order: 2; text-align: center; max-width: 640px; }
+  .welcome-copy .eyebrow { justify-content: center; }
+  .welcome-copy p { margin-inline: auto; }
+  /* The note sits inside .welcome-rewards-row, a flex container that is
+     left-aligned above 790px wide — which a 800px portrait kiosk is. */
+  .welcome-rewards-row { justify-content: center; }
+  .mini-note { justify-content: center; }
+
+  /* Sized against height, not width. The base rule uses vw, which on a
+     narrow tall screen makes the hero shrink exactly where there is room. */
+  .hero-photo-wrap { width: min(58vw, 30vh); height: min(58vw, 30vh); border-width: 9px; }
+  .hero-ring { width: min(64vw, 33vh); }
+  .ring-two  { width: min(74vw, 38vh); }
+
+  /* The checkout and customize screens are side-by-side by default; in
+     portrait the second column has nowhere to go. */
+  .customize-page,
+  .checkout-grid { grid-template-columns: 1fr; }
+  .summary-card { position: static; }
+
+  /* Touch targets. The spec is 9 mm minimum; at 149 ppi (10.1-inch,
+     1280x800) that is 53 px. The base 40 px arrow is 6.8 mm. */
+  .small-arrow { width: 54px; height: 54px; border-radius: 15px; }
+  .category-tabs button { min-height: 54px; }
+  .language-button,
+  .cart-button { min-height: 54px; }
+}
+
+/* ---- 27-inch portrait (1080x1920) --------------------------------------
+   Far more height than content. Scale the type up so it reads from a
+   distance, and keep the things a customer must touch in the lower part of
+   the panel: on a tall mounted screen the top is out of comfortable reach
+   for a seated or shorter user. */
+@media (orientation: portrait) and (min-height: 1500px) {
+  .welcome-main {
+    /* Weight the block downwards rather than centring it. */
+    align-content: end;
+    padding-bottom: clamp(90px, 12vh, 230px);
+    gap: clamp(28px, 3.5vh, 60px);
+  }
+  .welcome-copy h1 { font-size: clamp(56px, 6.4vw, 82px); }
+  .welcome-copy p { font-size: 22px; max-width: 700px; }
+  .welcome-copy .eyebrow { font-size: 15px; }
+  /* Larger hero: at 1080x1920 a 26vh photo left ~480px of empty cream
+     above it. Height is the abundant axis here, so spend it. */
+  .hero-photo-wrap { width: min(66vw, 32vh); height: min(66vw, 32vh); }
+  .hero-ring { width: min(72vw, 35vh); }
+  .ring-two  { width: min(82vw, 40vh); }
+  .hero-button { min-height: 84px; min-width: 340px; font-size: 20px; }
+
+  /* Menu: bigger cards, fewer per row, and a reachable cart. */
+  .products-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; }
+  .product-photo { height: 300px; }
+  .product-body h3 { font-size: 26px; }
+  .product-body p { font-size: 16px; }
+  .product-foot strong { font-size: 24px; }
+  .small-arrow { width: 62px; height: 62px; }
+  .category-tabs button { min-height: 64px; font-size: 18px; padding: 0 22px; }
+  .page-heading h1 { font-size: 52px; }
+  .topbar { height: 96px; }
+  .language-button, .cart-button { min-height: 64px; font-size: 17px; }
+}
