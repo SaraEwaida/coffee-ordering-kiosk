@@ -1,5 +1,6 @@
 import { buildPlatform } from './app.js';
 import { createLogger } from './lib/logger.js';
+import { DEFAULT_PLATFORM_PORT } from './services/receipts.js';
 
 /**
  * Entry point for the new kiosk platform (kiosk API + Demo POS).
@@ -9,7 +10,7 @@ import { createLogger } from './lib/logger.js';
  * endpoints. Nothing about V3 is disabled by starting this.
  */
 const logger = createLogger({ service: 'kiosk-platform' });
-const port = Number(process.env.PLATFORM_PORT ?? 4001);
+const port = Number(process.env.PLATFORM_PORT ?? DEFAULT_PLATFORM_PORT);
 
 let platform;
 try {
@@ -22,13 +23,24 @@ try {
 
 const server = platform.app.listen(port, '0.0.0.0', () => {
   logger.info('platform.listening', { port });
+
+  // Only now is the port certain. Receipt QR codes are built from this, so
+  // binding it here rather than guessing is what keeps a scanned code
+  // pointing at a server that exists.
+  const receiptOriginUrl = platform.receipts.bindPort(server.address().port);
   process.stdout.write(
     `\n  Kiosk platform ready\n` +
     `    Kiosk API      http://localhost:${port}/api/kiosk/menu\n` +
     `    Kiosk health   http://localhost:${port}/api/kiosk/health\n` +
     `    Demo POS API   http://localhost:${port}/demo-pos/api/health\n` +
-    `    Ops exceptions http://localhost:${port}/api/ops/exceptions\n\n`,
+    `    Ops exceptions http://localhost:${port}/api/ops/exceptions\n` +
+    `    Receipts (QR)  ${receiptOriginUrl ?? 'UNAVAILABLE - no LAN address found, QR codes disabled'}\n\n`,
   );
+  if (!receiptOriginUrl) {
+    logger.warn('receipts.no_reachable_origin', {
+      hint: 'Set PUBLIC_RECEIPT_ORIGIN to a URL a phone can reach.',
+    });
+  }
   if (platform.importSummary?.found) {
     const s = platform.importSummary;
     process.stdout.write(

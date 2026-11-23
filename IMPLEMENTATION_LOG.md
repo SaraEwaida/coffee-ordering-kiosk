@@ -456,3 +456,33 @@ RTL page. Unknown values fall back to English.
 direction, junk-lang fallback and localised error pages). Build clean.
 Still unrendered in a browser: the Arabic layout is asserted in markup, not
 seen, and the QR is still unscanned by a real phone.
+
+### QR pointed at the wrong port (bug, found by the user scanning it)
+
+A scanned QR returned `Cannot GET /receipt/<token>`.
+
+`receiptOrigin()` built the URL from `PORT ?? 3001`, but the platform listens
+on `PLATFORM_PORT ?? 4001`. Port 3001 is the old Version 3 server, which has
+no `/receipt/:token` route and no SPA build on a dev machine — hence Express's
+bare "Cannot GET". Every QR code ever produced pointed at the wrong server.
+
+Cause: I assumed the port rather than reading the one the server binds. None
+of the 24 existing receipt tests caught it, because they all drove the app
+through an ephemeral port and never exercised the production entry point.
+
+Fixed:
+- `DEFAULT_PLATFORM_PORT` is now a single exported constant used by both
+  `main.js` and `receiptOrigin()`, so the two cannot drift apart again.
+- `ReceiptService.bindPort()` is called from `main.js` after `listen()` with
+  `server.address().port`, so the real port is used rather than any default.
+- The startup banner prints the receipt origin, making a bad or missing
+  origin visible immediately instead of at the first scan.
+
+Four regression tests added, including two that read `main.js` and assert it
+takes its default from the shared constant and binds the real socket port.
+
+Verified end to end against `server/main.js` itself (not a test harness):
+banner shows `Receipts (QR) http://<lan>:4001`, a placed order returns a
+43-character token, and fetching the exact `receiptUrl` returns 200 HTML.
+
+299 tests pass, build clean.

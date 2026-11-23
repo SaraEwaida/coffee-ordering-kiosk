@@ -370,7 +370,9 @@ erroring.
 ### Reachable origin
 
 `receiptUrl` is built from `PUBLIC_RECEIPT_ORIGIN` when set, otherwise from
-the machine's LAN IPv4 address. It is never `localhost`: a QR pointing at
+the machine's LAN IPv4 address and **the port the server actually bound**,
+pushed in by `main.js` after `listen()`. The platform listens on
+`PLATFORM_PORT` (default 4001), not 3001 — 3001 is the old Version 3 server. It is never `localhost`: a QR pointing at
 localhost scans correctly and then fails on the customer's phone. When no
 reachable address can be determined the URL is `null` and the kiosk shows no
 QR code rather than a dead one.

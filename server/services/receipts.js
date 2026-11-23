@@ -39,6 +39,17 @@ export function lanAddress() {
 }
 
 /**
+ * Default port, matching `server/main.js`.
+ *
+ * This existing as a guess at all was a bug: the platform listens on
+ * PLATFORM_PORT (4001) while this used to assume 3001, so every QR code
+ * pointed at the old Version 3 server and a phone got "Cannot GET". The real
+ * port is pushed in from main.js once the server is actually listening; this
+ * constant is only the fallback for callers that never bind a socket.
+ */
+export const DEFAULT_PLATFORM_PORT = 4001;
+
+/**
  * Where a phone should fetch receipts from.
  *
  * PUBLIC_RECEIPT_ORIGIN wins, because a deployed kiosk sits behind a real
@@ -51,7 +62,8 @@ export function receiptOrigin({ env = process.env, port } = {}) {
   if (configured) return configured.replace(/\/+$/, '');
   const host = lanAddress();
   if (!host) return null;
-  return `http://${host}:${port ?? env.PORT ?? 3001}`;
+  const resolved = port ?? env.PLATFORM_PORT ?? DEFAULT_PLATFORM_PORT;
+  return `http://${host}:${resolved}`;
 }
 
 export class ReceiptService {
@@ -98,6 +110,17 @@ export class ReceiptService {
       )
       .run(token, this.storeId, kioskId, posOrderId, posOrderNumber, expiresAt);
     return token;
+  }
+
+  /**
+   * Bind the origin to the port the server actually listens on.
+   *
+   * Called from main.js after `listen()`, because only then is the port
+   * known for certain. Guessing it is what broke the QR code.
+   */
+  bindPort(port) {
+    this.origin = receiptOrigin({ port });
+    return this.origin;
   }
 
   /** Public URL for a token, or null when no reachable origin is known. */

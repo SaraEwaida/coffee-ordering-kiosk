@@ -1,7 +1,9 @@
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeTestPlatform, LATTE_LINE } from './helpers.js';
-import { ReceiptService, receiptOrigin, RECEIPT_TOKEN_PATTERN } from '../services/receipts.js';
+import { ReceiptService, receiptOrigin, RECEIPT_TOKEN_PATTERN, DEFAULT_PLATFORM_PORT } from '../services/receipts.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { receiptRoutes } from '../routes/receipts.js';
 import express from 'express';
 
@@ -129,6 +131,41 @@ describe('receipts: reachable origin', () => {
       assert.ok(!/localhost|127\.0\.0\.1/.test(origin),
         'a QR pointing at localhost scans fine and then fails on the phone');
     }
+  });
+
+  test('the default port is the one main.js actually listens on', () => {
+    // Regression: the QR pointed at 3001 (the old V3 server) while the
+    // platform listened on 4001, so every scan returned "Cannot GET".
+    const main = readFileSync(fileURLToPath(new URL('../main.js', import.meta.url)), 'utf8');
+    assert.match(main, /PLATFORM_PORT \?\? DEFAULT_PLATFORM_PORT/,
+      'main.js must take its default port from the same constant the receipt URL uses');
+    const origin = receiptOrigin({ env: {} });
+    if (origin) {
+      assert.match(origin, new RegExp(`:${DEFAULT_PLATFORM_PORT}$`),
+        'a receipt URL must point at the platform port, not a guess');
+    }
+  });
+
+  test('main.js binds the real listening port into the receipt origin', () => {
+    const main = readFileSync(fileURLToPath(new URL('../main.js', import.meta.url)), 'utf8');
+    assert.match(main, /bindPort\(server\.address\(\)\.port\)/,
+      'the port must come from the bound socket, never from an assumption');
+  });
+
+  test('bindPort overrides the default with the real port', () => {
+    const service = new ReceiptService({
+      kioskStore: platform.kioskStore, adapter: platform.adapter, storeId: platform.storeId,
+    });
+    const origin = service.bindPort(5555);
+    if (origin) {
+      assert.match(origin, /:5555$/);
+      assert.match(service.urlFor('T'.repeat(43)), /:5555\/receipt\/T{43}$/);
+    }
+  });
+
+  test('PLATFORM_PORT is honoured when set', () => {
+    const origin = receiptOrigin({ env: { PLATFORM_PORT: '9099' } });
+    if (origin) assert.match(origin, /:9099$/);
   });
 
   test('no reachable origin means no URL, rather than a broken one', () => {
