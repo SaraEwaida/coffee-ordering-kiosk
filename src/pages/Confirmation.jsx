@@ -42,7 +42,13 @@ export default function Confirmation({ t, lang, currency, order, onNew }) {
   // The receipt URL is built by the server from a LAN-reachable address. If it
   // could not work one out it sends null, and we show no QR rather than a code
   // pointing at localhost — which would scan fine and then fail on the phone.
-  const receiptUrl = live.receiptUrl ?? order.receiptUrl ?? null;
+  const baseReceiptUrl = live.receiptUrl ?? order.receiptUrl ?? null;
+
+  // Carry the language the customer chose at the kiosk into the QR, so the
+  // page their phone opens is in the language they have been reading.
+  const receiptUrl = baseReceiptUrl
+    ? `${baseReceiptUrl}${baseReceiptUrl.includes('?') ? '&' : '?'}lang=${lang}`
+    : null;
 
   return (
     <div className="inner-screen">

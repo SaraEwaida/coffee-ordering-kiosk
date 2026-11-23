@@ -443,3 +443,16 @@ code. Found by a test, not by reading. Fixed; covered by
 - Nothing rendered in a browser. The QR has not been scanned with a real
   phone, and the confirmation-screen layout at 10-inch landscape is unchecked.
 - Arabic RTL on the receipt page is written but unseen.
+
+### Receipt language (follow-up)
+
+The first version printed both languages on one page. Replaced with
+`?lang=en|ar`, which the kiosk appends to the QR URL from the language the
+customer chose. Arabic sets `dir="rtl"`; the order number and all money
+amounts stay `direction:ltr` so a number cannot render backwards inside an
+RTL page. Unknown values fall back to English.
+
+295 tests pass (5 new covering both languages, RTL direction, numeral
+direction, junk-lang fallback and localised error pages). Build clean.
+Still unrendered in a browser: the Arabic layout is asserted in markup, not
+seen, and the QR is still unscanned by a real phone.

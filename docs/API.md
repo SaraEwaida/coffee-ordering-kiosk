@@ -356,8 +356,16 @@ shows current kitchen and payment status rather than a snapshot.
 ### `GET /receipt/:token`
 
 The same receipt as a self-contained HTML page: no JavaScript, no React
-bundle, mobile viewport, `noindex`, bilingual. This is what the QR code
-points at, because the reader is a phone camera.
+bundle, mobile viewport, `noindex`. This is what the QR code points at,
+because the reader is a phone camera.
+
+`?lang=en` (default) or `?lang=ar`. The page renders in ONE language — the
+one the customer chose at the kiosk, which the kiosk appends to the QR URL.
+A receipt is read by one person who has already picked a language; showing
+both halves the legible content. `?lang=ar` sets `dir="rtl"`, while the
+order number and money amounts stay `direction:ltr` so they cannot read
+backwards. An unrecognised `lang` falls back to English rather than
+erroring.
 
 ### Reachable origin
 

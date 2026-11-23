@@ -183,7 +183,64 @@ describe('receipts: HTTP surface', () => {
       assert.match(html, /viewport/, 'must be mobile-sized');
       assert.match(html, /noindex/, 'a receipt must not be indexable');
       assert.ok(!/<script/i.test(html), 'must render without JavaScript');
-      assert.match(html, /إيصال/, 'Arabic must be present');
+    } finally { await close(); }
+  });
+
+  test('English is the default and shows no Arabic', async () => {
+    const order = await placeOrder(platform);
+    const { base, close } = await serve();
+    try {
+      const html = await (await fetch(`${base}/receipt/${order.receiptToken}`)).text();
+      assert.match(html, /lang="en"/);
+      assert.match(html, /dir="ltr"/);
+      assert.match(html, /Digital receipt/);
+      assert.ok(!/[\u0600-\u06FF]/.test(html), 'an English receipt must not mix in Arabic');
+    } finally { await close(); }
+  });
+
+  test('?lang=ar renders a right-to-left Arabic receipt', async () => {
+    const order = await placeOrder(platform);
+    const { base, close } = await serve();
+    try {
+      const html = await (await fetch(`${base}/receipt/${order.receiptToken}?lang=ar`)).text();
+      assert.match(html, /lang="ar"/);
+      assert.match(html, /dir="rtl"/, 'Arabic must lay out right-to-left');
+      assert.match(html, /إيصال رقمي/);
+      assert.match(html, /المجموع/, 'the total must be labelled in Arabic');
+      assert.ok(!/Digital receipt|Dine in|Takeaway/.test(html), 'an Arabic receipt must not mix in English');
+    } finally { await close(); }
+  });
+
+  test('the order number stays left-to-right inside an Arabic page', async () => {
+    const order = await placeOrder(platform);
+    const { base, close } = await serve();
+    try {
+      const html = await (await fetch(`${base}/receipt/${order.receiptToken}?lang=ar`)).text();
+      assert.match(html, /\.order \.num \{[^}]*direction:ltr/,
+        'a number rendered RTL can read backwards to the customer');
+      assert.match(html, /\.amt \{[^}]*direction:ltr/);
+    } finally { await close(); }
+  });
+
+  test('a junk lang falls back to English rather than erroring', async () => {
+    const order = await placeOrder(platform);
+    const { base, close } = await serve();
+    try {
+      for (const bad of ['fr', '', '../x', 'AR']) {
+        const res = await fetch(`${base}/receipt/${order.receiptToken}?lang=${encodeURIComponent(bad)}`);
+        assert.equal(res.status, 200, `lang=${bad} must still render`);
+        assert.match(await res.text(), /lang="en"/);
+      }
+    } finally { await close(); }
+  });
+
+  test('an expired link explains itself in the requested language', async () => {
+    const { base, close } = await serve();
+    try {
+      const ar = await (await fetch(`${base}/receipt/${'D'.repeat(43)}?lang=ar`)).text();
+      assert.match(ar, /انتهت صلاحيته/);
+      const en = await (await fetch(`${base}/receipt/${'D'.repeat(43)}`)).text();
+      assert.match(en, /not valid, or it has expired/);
     } finally { await close(); }
   });
 
