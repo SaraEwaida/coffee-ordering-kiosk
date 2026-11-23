@@ -21,19 +21,50 @@ try {
   process.exit(1);
 }
 
-const server = platform.app.listen(port, '0.0.0.0', () => {
-  logger.info('platform.listening', { port });
+const server = platform.app.listen(port, '0.0.0.0');
+
+/**
+ * A failed bind must say what is wrong, not crash in the success path.
+ *
+ * The usual cause is a previous `npm run dev` still running and holding the
+ * port. That deserves one clear sentence, not a stack trace.
+ */
+server.on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    logger.error('platform.port_in_use', { port });
+    process.stderr.write(
+      `\n  Port ${port} is already in use.\n\n` +
+      `  Another copy of the platform is probably still running — an earlier\n` +
+      `  'npm run dev' that was closed without stopping, most often.\n\n` +
+      `  Windows:  netstat -ano | findstr :${port}\n` +
+      `            taskkill /PID <pid> /F\n\n` +
+      `  Or start this one somewhere else:\n` +
+      `            $env:PLATFORM_PORT=${port + 1}; npm run dev\n\n`,
+    );
+  } else {
+    logger.error('platform.listen_failed', { port, code: error.code, message: error.message });
+    process.stderr.write(`\n  Could not start on port ${port}: ${error.message}\n\n`);
+  }
+  process.exit(1);
+});
+
+server.on('listening', () => {
+  // address() is null unless the socket actually bound, so never dereference
+  // it blindly: on a failed bind that turns a clear port conflict into an
+  // unrelated TypeError. The configured port is the fallback.
+  const boundPort = server.address()?.port ?? port;
+  logger.info('platform.listening', { port: boundPort });
 
   // Only now is the port certain. Receipt QR codes are built from this, so
   // binding it here rather than guessing is what keeps a scanned code
   // pointing at a server that exists.
-  const receiptOriginUrl = platform.receipts.bindPort(server.address().port);
+  const receiptOriginUrl = platform.receipts.bindPort(boundPort);
   process.stdout.write(
     `\n  Kiosk platform ready\n` +
-    `    Kiosk API      http://localhost:${port}/api/kiosk/menu\n` +
-    `    Kiosk health   http://localhost:${port}/api/kiosk/health\n` +
-    `    Demo POS API   http://localhost:${port}/demo-pos/api/health\n` +
-    `    Ops exceptions http://localhost:${port}/api/ops/exceptions\n` +
+    `    Kiosk API      http://localhost:${boundPort}/api/kiosk/menu\n` +
+    `    Kiosk health   http://localhost:${boundPort}/api/kiosk/health\n` +
+    `    Demo POS API   http://localhost:${boundPort}/demo-pos/api/health\n` +
+    `    Ops exceptions http://localhost:${boundPort}/api/ops/exceptions\n` +
     `    Receipts (QR)  ${receiptOriginUrl ?? 'UNAVAILABLE - no LAN address found, QR codes disabled'}\n\n`,
   );
   if (!receiptOriginUrl) {

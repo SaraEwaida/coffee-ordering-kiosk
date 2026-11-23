@@ -486,3 +486,28 @@ banner shows `Receipts (QR) http://<lan>:4001`, a placed order returns a
 43-character token, and fetching the exact `receiptUrl` returns 200 HTML.
 
 299 tests pass, build clean.
+
+### Unguarded server.address() crashed on a port conflict (bug)
+
+`npm run dev` died with `TypeError: Cannot read properties of null (reading
+'port')` at the `bindPort(server.address().port)` line added in the previous
+fix.
+
+`server.address()` returns null when the socket never bound. A previous
+`npm run dev` was still holding 4001, the listen failed with EADDRINUSE, and
+my unguarded dereference turned a clear port conflict into an unrelated
+TypeError in the success path. Introduced by me one commit earlier, in the
+fix for the QR port.
+
+Fixed:
+- The listen callback is now an explicit `listening` handler using
+  `server.address()?.port ?? port`.
+- A `server.on('error')` handler names EADDRINUSE, gives the Windows
+  `netstat`/`taskkill` commands and the `PLATFORM_PORT` override, then exits 1.
+- The startup banner uses the bound port rather than the requested one.
+
+Three assertions added, including one that fails if `server.address().port`
+ever appears unguarded again.
+
+Verified by running two instances on the same port: the second prints the
+conflict message and exits 1 instead of throwing. 300 tests pass.

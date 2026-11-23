@@ -148,8 +148,19 @@ describe('receipts: reachable origin', () => {
 
   test('main.js binds the real listening port into the receipt origin', () => {
     const main = readFileSync(fileURLToPath(new URL('../main.js', import.meta.url)), 'utf8');
-    assert.match(main, /bindPort\(server\.address\(\)\.port\)/,
+    assert.match(main, /bindPort\(boundPort\)/,
       'the port must come from the bound socket, never from an assumption');
+    assert.match(main, /server\.address\(\)\?\.port \?\? port/,
+      'address() is null on a failed bind and must never be dereferenced blindly');
+    assert.ok(!/server\.address\(\)\.port/.test(main),
+      'an unguarded address().port turns a port conflict into a TypeError');
+  });
+
+  test('main.js reports a port conflict instead of crashing', () => {
+    const main = readFileSync(fileURLToPath(new URL('../main.js', import.meta.url)), 'utf8');
+    assert.match(main, /server\.on\('error'/, 'a failed bind must be handled');
+    assert.match(main, /EADDRINUSE/, 'the common case deserves a named message');
+    assert.match(main, /PLATFORM_PORT=/, 'the message must say how to use another port');
   });
 
   test('bindPort overrides the default with the real port', () => {
