@@ -180,11 +180,33 @@ Card text is deliberately **not** sized in `vw`. Viewport units change with
 orientation, so a `clamp(17px, 1.35vw, 22px)` heading shrinks when the same
 physical screen is turned on its side.
 
-### Tuning card size
+### Units
 
-One value: `--card-width` on `.products-grid`. 272px gives 4 per row in
-landscape and 2 in portrait. Around 228px gives 4 and 3. The 27-inch block
-sets 430px.
+No pixels and no viewport units anywhere in the layout.
+
+- **`rem` for everything** — type, spacing, radii, touch targets, card
+  width. `rem` is relative to the root font size, so the whole interface
+  scales from one value, and unlike `vw` it does not change when the same
+  physical panel is rotated.
+- **`px` appears once**, on `html { font-size: 16px }`. That is the anchor
+  every other size is measured against.
+- **`vh` only where height genuinely is the constraint** — the welcome hero,
+  which should fill a tall panel rather than a wide one.
+
+The 27-inch panel is read from further away, so it raises the root size to
+`20px` and everything follows: type, padding, touch targets, card width and
+gaps, in the same proportions as the 10-inch. That replaced about thirty
+individual overrides.
+
+### Tuning
+
+| Want | Change |
+|------|--------|
+| Whole interface bigger or smaller | `html { font-size }` |
+| More or fewer cards per row | `--card-width` on `.products-grid` |
+
+`--card-width: 17rem` gives 4 per row at 1280x800 and 2 at 800x1280.
+About `14rem` gives 4 and 3.
 
 Touch targets never drop below 44px and reach 54px on the kiosk panels; the
 9mm minimum on the DB10E-T is 53px.
