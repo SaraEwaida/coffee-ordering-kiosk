@@ -141,3 +141,30 @@ only rotates the signal.
 Verify the kiosk fills the panel: the browser must be fullscreen on that
 display (`F11`, or Edge kiosk mode as described above), not on the laptop
 screen.
+
+
+## Adaptive layout
+
+The kiosk does not target a list of devices. Layout is derived from the space
+available, so an unlisted screen size is not a special case:
+
+- **Product grid** uses `repeat(auto-fit, minmax(min(258px, 100%), 1fr))`.
+  The column count follows the width: 2 columns at 600px, 3 at 800px, 4 at
+  1280px and above. Nothing names a device.
+- **Product photos** use `aspect-ratio` rather than a pixel height, so a photo
+  scales with the card it sits in.
+- **Type and spacing** use `clamp()`, so they scale continuously instead of
+  jumping at a breakpoint.
+- **Two-pane screens** (customize, checkout) are wrapping flex rows with a
+  minimum basis; they fold to one column when there is no room for two,
+  whatever the viewport happens to be.
+
+### Tuning card size
+
+One value controls how many products appear per row: the `258px` minimum
+track width on `.products-grid`. Raise it for fewer, larger cards; lower it
+for more, smaller ones. The 27-inch portrait block raises it to `420px` for
+the same reason, rather than naming a column count.
+
+Touch targets never drop below 44px and reach 54px on the kiosk panels; the
+9mm minimum on the DB10E-T is 53px.
