@@ -159,12 +159,32 @@ available, so an unlisted screen size is not a special case:
   minimum basis; they fold to one column when there is no room for two,
   whatever the viewport happens to be.
 
+### What "adaptive" means here
+
+Rotating a panel changes **how many items fit on a row, and nothing else**.
+A product card is one fixed width and its text is one fixed size, in both
+orientations:
+
+| Viewport    | Card width | Cards per row |
+|-------------|-----------|----------------|
+| 1280 x 800  | 272px     | 4              |
+| 800 x 1280  | 272px     | 2              |
+| 1080 x 1920 | 430px     | 2              |
+
+This is why the grid uses `repeat(auto-fit, min(var(--card-width), 100%))`
+with `justify-content: center`, not `minmax(..., 1fr)`. A `1fr` maximum
+stretches tracks to fill the row, which would make a portrait card 351px
+against a landscape card's 274px — same font, different card.
+
+Card text is deliberately **not** sized in `vw`. Viewport units change with
+orientation, so a `clamp(17px, 1.35vw, 22px)` heading shrinks when the same
+physical screen is turned on its side.
+
 ### Tuning card size
 
-One value controls how many products appear per row: the `258px` minimum
-track width on `.products-grid`. Raise it for fewer, larger cards; lower it
-for more, smaller ones. The 27-inch portrait block raises it to `420px` for
-the same reason, rather than naming a column count.
+One value: `--card-width` on `.products-grid`. 272px gives 4 per row in
+landscape and 2 in portrait. Around 228px gives 4 and 3. The 27-inch block
+sets 430px.
 
 Touch targets never drop below 44px and reach 54px on the kiosk panels; the
 9mm minimum on the DB10E-T is 53px.
