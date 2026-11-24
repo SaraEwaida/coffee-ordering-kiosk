@@ -210,3 +210,42 @@ About `14rem` gives 4 and 3.
 
 Touch targets never drop below 44px and reach 54px on the kiosk panels; the
 9mm minimum on the DB10E-T is 53px.
+
+## Running full screen with no browser UI
+
+### Quickest
+
+Click the kiosk page and press **F11**. That hides the tabs, address bar and
+the Windows taskbar together. Press F11 again to leave.
+
+### Proper kiosk mode
+
+```
+scripts\start-kiosk.cmd
+```
+
+Opens Edge (or Chrome) with `--kiosk`: no tabs, no address bar, no menu,
+nothing a customer can touch. Exit with **Alt+F4**.
+
+Pass a different address if needed:
+
+```
+scripts\start-kiosk.cmd http://localhost:4173
+```
+
+The script uses a throwaway browser profile under `%TEMP%`, so a previous
+session's zoom level, cached error page or "restore pages?" prompt cannot
+appear in front of a customer.
+
+It only opens the browser. The servers must already be running.
+
+### Known gap: the platform does not serve the built frontend
+
+In development Vite serves the React app on port 5173 and proxies the API
+to 4001. The platform itself serves only the API and the Demo POS pages, so
+there is currently no way to run the customer kiosk without the Vite dev
+server.
+
+That is fine for a demo on a laptop and wrong for a deployed kiosk, which
+should run the built assets from `dist/`. Serving `dist/` from the platform
+is outstanding work, not a configuration step.
