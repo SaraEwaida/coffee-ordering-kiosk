@@ -51,6 +51,7 @@ export default function App() {
   const [menu, setMenu] = useState(null);
   const [menuError, setMenuError] = useState('');
   const [selected, setSelected] = useState(null);
+
   const [cart, setCart] = useState(loadCart);
   const [fulfillment, setFulfillment] = useState('takeaway');
   const [quote, setQuote] = useState(null);
@@ -109,6 +110,17 @@ export default function App() {
     () => new Map(products.map((p) => [p.posProductId, p])),
     [products],
   );
+
+  // Dev only: ?product=PRD-1005 lands on the customize screen for a real
+  // product, so that screen can be inspected without clicking the flow.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const wanted = new URLSearchParams(window.location.search).get('product');
+    if (wanted && !selected) {
+      const match = productsById.get(wanted);
+      if (match) setSelected(match);
+    }
+  }, [productsById, selected]);
 
   // ---- cart --------------------------------------------------------------
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
