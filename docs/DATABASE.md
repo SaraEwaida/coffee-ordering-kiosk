@@ -166,3 +166,53 @@ WHERE payment_accepted = 1 AND status != 'submitted';
 
 Never `SELECT *` from `pos_users` or `pos_sessions` in a shared context: they
 hold password hashes and session digests.
+
+## Looking at the data
+
+### From the terminal
+
+```
+npm run db:inspect              summary of both databases
+npm run db:inspect -- pos       Demo POS only
+npm run db:inspect -- kiosk     kiosk only
+npm run db:inspect -- tables    every table with a row count
+```
+
+Run a read-only query against both databases:
+
+```
+npm run db:inspect -- "SELECT name_en, price_minor FROM pos_products WHERE available = 1"
+```
+
+Both files are opened read-only and anything that is not `SELECT`, `WITH` or
+`PRAGMA` is refused, so this cannot modify demo data mid-demonstration.
+Amounts in `_minor` columns are printed as major units.
+
+`npm run db:inspect:v3` is the old Version 3 inspector. It reads
+`coffee-kiosk.sqlite`, which now holds only imported legacy history.
+
+### In VS Code
+
+Install the **SQLite Viewer** extension (`qwtel.sqlite-viewer`), then click
+either file in the Explorer:
+
+```
+server/data/demo-pos.sqlite
+server/data/kiosk.sqlite
+```
+
+Tables open as sortable grids. Useful for browsing; the terminal inspector is
+better for the joined views above.
+
+### Which database holds what
+
+`demo-pos.sqlite` is the shop's till: products, prices, modifiers, orders,
+payments, gift cards, staff, audit trail. It is the source of truth, and in a
+real deployment it is replaced by the client's own POS.
+
+`kiosk.sqlite` is our ordering channel: the menu cache, quotes, order
+submissions and their retries, payment sessions, receipts, content overlays,
+kiosk registrations and sync health. It holds no prices of its own.
+
+The split is physical rather than by convention, so kiosk code cannot read POS
+tables even by accident.
